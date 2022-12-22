@@ -31,7 +31,7 @@
 databundles:
   # tutorial bundle specific for Nigeria and Benin only
   bundle_tutorial_NGBJ:
-    countries: [NG, BJ]
+    countries: [NG,BJ]
     tutorial: true
     category: data
     destination: "data"
@@ -67,7 +67,7 @@ databundles:
 
   # tutorial bundle specific for Nigeria and Benin only
   bundle_cutouts_tutorial_NGBJ:
-    countries: [NG, BJ]
+    countries: [NG,BJ]
     tutorial: true
     category: cutouts
     destination: "cutouts"
