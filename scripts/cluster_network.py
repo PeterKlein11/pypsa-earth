@@ -487,6 +487,7 @@ def cluster_regions(busmaps, input=None, output=None):
         # regions = gpd.read_file(getattr(input, which)).set_index("name")
         regions = gpd.read_file(getattr(input, which))
         regions = regions.reindex(columns=REGION_COLS).set_index("name")
+        regions = regions.dropna(subset=['geometry'])
         aggfunc = dict(x="mean", y="mean", country="first")
         regions_c = regions.dissolve(busmap, aggfunc=aggfunc)
         regions_c.index.name = "name"

@@ -332,7 +332,7 @@ if __name__ == "__main__":
 
     cutout = atlite.Cutout(paths["cutout"])
     regions = gpd.read_file(paths.regions)  # .set_index("name").rename_axis("bus")
-
+    regions = regions.dropna(subset=['geometry'])
     assert not regions.empty, (
         f"List of regions in {snakemake.input.regions} is empty, please "
         "disable the corresponding renewable technology"
@@ -499,6 +499,7 @@ if __name__ == "__main__":
             excluder.add_geometry(paths.country_shapes, buffer=buffer, invert=True)
 
         kwargs = dict(nprocesses=nprocesses, disable_progressbar=noprogress)
+
         if noprogress:
             logger.info("Calculate landuse availabilities...")
             start = time.time()

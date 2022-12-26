@@ -162,12 +162,12 @@ def _prepare_connection_costs_per_link(n, costs, config):
     for tech in config["renewable"]:
         if tech.startswith("offwind"):
             connection_costs_per_link[tech] = (
-                n.links.length
+                n.links.length.apply(pd.to_numeric)
                 * config["lines"]["length_factor"]
                 * (
-                    n.links.underwater_fraction
+                    n.links.underwater_fraction.apply(pd.to_numeric)
                     * costs.at[tech + "-connection-submarine", "capital_cost"]
-                    + (1.0 - n.links.underwater_fraction)
+                    + (1.0 - n.links.underwater_fraction.apply(pd.to_numeric))
                     * costs.at[tech + "-connection-underground", "capital_cost"]
                 )
             )

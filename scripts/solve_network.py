@@ -411,9 +411,9 @@ if __name__ == "__main__":
         snakemake = mock_snakemake(
             "solve_network",
             simpl="",
-            clusters="54",
+            clusters="11",
             ll="copt",
-            opts="Co2L-1H",
+            opts="Co2L-24H",
         )
     configure_logging(snakemake)
 
