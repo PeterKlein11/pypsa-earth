@@ -119,56 +119,56 @@ if config["enable"].get("retrieve_databundle", True):
             "scripts/retrieve_databundle_light.py"
 
 
-if config["enable"].get("download_osm_data", True):
+# if config["enable"].get("download_osm_data", True):
 
-    rule download_osm_data:
-        output:
-            cables="resources/osm/raw/africa_all_raw_cables.geojson",
-            generators="resources/osm/raw/africa_all_raw_generators.geojson",
-            generators_csv="resources/osm/raw/africa_all_raw_generators.csv",
-            lines="resources/osm/raw/africa_all_raw_lines.geojson",
-            substations="resources/osm/raw/africa_all_raw_substations.geojson",
-        log:
-            "logs/download_osm_data.log",
-        script:
-            "scripts/download_osm_data.py"
-
-
-rule clean_osm_data:
-    input:
-        cables="resources/osm/raw/africa_all_raw_cables.geojson",
-        generators="resources/osm/raw/africa_all_raw_generators.geojson",
-        lines="resources/osm/raw/africa_all_raw_lines.geojson",
-        substations="resources/osm/raw/africa_all_raw_substations.geojson",
-        country_shapes="resources/shapes/country_shapes.geojson",
-        offshore_shapes="resources/shapes/offshore_shapes.geojson",
-        africa_shape="resources/shapes/africa_shape.geojson",
-    output:
-        generators="resources/osm/clean/africa_all_generators.geojson",
-        generators_csv="resources/osm/clean/africa_all_generators.csv",
-        lines="resources/osm/clean/africa_all_lines.geojson",
-        substations="resources/osm/clean/africa_all_substations.geojson",
-    log:
-        "logs/clean_osm_data.log",
-    script:
-        "scripts/clean_osm_data.py"
+#     rule download_osm_data:
+#         output:
+#             cables="resources/osm/raw/africa_all_raw_cables.geojson",
+#             generators="resources/osm/raw/africa_all_raw_generators.geojson",
+#             generators_csv="resources/osm/raw/africa_all_raw_generators.csv",
+#             lines="resources/osm/raw/africa_all_raw_lines.geojson",
+#             substations="resources/osm/raw/africa_all_raw_substations.geojson",
+#         log:
+#             "logs/download_osm_data.log",
+#         script:
+#             "scripts/download_osm_data.py"
 
 
-rule build_osm_network:
-    input:
-        generators="resources/osm/clean/africa_all_generators.geojson",
-        lines="resources/osm/clean/africa_all_lines.geojson",
-        substations="resources/osm/clean/africa_all_substations.geojson",
-        country_shapes="resources/shapes/country_shapes.geojson",
-    output:
-        lines="resources/base_network/africa_all_lines_build_network.csv",
-        converters="resources/base_network/africa_all_converters_build_network.csv",
-        transformers="resources/base_network/africa_all_transformers_build_network.csv",
-        substations="resources/base_network/africa_all_buses_build_network.csv",
-    log:
-        "logs/build_osm_network.log",
-    script:
-        "scripts/build_osm_network.py"
+# rule clean_osm_data:
+#     input:
+#         cables="resources/osm/raw/africa_all_raw_cables.geojson",
+#         generators="resources/osm/raw/africa_all_raw_generators.geojson",
+#         lines="resources/osm/raw/africa_all_raw_lines.geojson",
+#         substations="resources/osm/raw/africa_all_raw_substations.geojson",
+#         country_shapes="resources/shapes/country_shapes.geojson",
+#         offshore_shapes="resources/shapes/offshore_shapes.geojson",
+#         africa_shape="resources/shapes/africa_shape.geojson",
+#     output:
+#         generators="resources/osm/clean/africa_all_generators.geojson",
+#         generators_csv="resources/osm/clean/africa_all_generators.csv",
+#         lines="resources/osm/clean/africa_all_lines.geojson",
+#         substations="resources/osm/clean/africa_all_substations.geojson",
+#     log:
+#         "logs/clean_osm_data.log",
+#     script:
+#         "scripts/clean_osm_data.py"
+
+
+# rule build_osm_network:
+#     input:
+#         generators="resources/osm/clean/africa_all_generators.geojson",
+#         lines="resources/osm/clean/africa_all_lines.geojson",
+#         substations="resources/osm/clean/africa_all_substations.geojson",
+#         country_shapes="resources/shapes/country_shapes.geojson",
+#     output:
+#         lines="resources/base_network/africa_all_lines_build_network.csv",
+#         converters="resources/base_network/africa_all_converters_build_network.csv",
+#         transformers="resources/base_network/africa_all_transformers_build_network.csv",
+#         substations="resources/base_network/africa_all_buses_build_network.csv",
+#     log:
+#         "logs/build_osm_network.log",
+#     script:
+#         "scripts/build_osm_network.py"
 
 
 rule build_shapes:
