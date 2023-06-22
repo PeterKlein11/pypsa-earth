@@ -1,7 +1,6 @@
+.. SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 ..
-  SPDX-FileCopyrightText: 2021 The PyPSA meets Earth authors
-
-  SPDX-License-Identifier: CC-BY-4.0
+.. SPDX-License-Identifier: CC-BY-4.0
 
 .. _talks_and_papers:
 
@@ -10,10 +9,10 @@ Talks and papers
 ##########################################
 
 
-.. _PyPSA_Africa:
+.. _PyPSA_Earth:
 
 PyPSA-Earth
-====================
+===========
 
 Video
 -------
@@ -21,23 +20,27 @@ Video
 - `First PyPSA user meeting with industry, TSO's, non-profits and research groups <https://youtu.be/fmwDxNpSMM4>`_
 - `Open Energy System Modelling in Africa: State of the Art and Future Opportunities <https://www.youtube.com/watch?v=E0V0T4U9nmQ>`_
 - `Getting Started with PyPSA-Eur - Part 1 <https://www.youtube.com/watch?v=ty47YU1_eeQ>`_
-- `Getting Started with PyPSA-Eur - Part 2 <https://www.youtube.com/watch?v=mAwhQnNRIvs>`_ 
+- `Getting Started with PyPSA-Eur - Part 2 <https://www.youtube.com/watch?v=mAwhQnNRIvs>`_
 - `PyPSA: Free Software for Investment Planning in Sector-Coupled Energy Systems <https://www.youtube.com/watch?v=h8YA8RM33K8>`_
 - `More user and developer tutorial on the PyPSA-Earth YouTube channel <https://www.youtube.com/channel/UCxLy648Np5B0mX1m4XPBrcg?app=desktop&cbrd=1>`_
 
 Publications:
---------------------
+-------------
 
-Parzen et al., "PyPSA-Earth. A New Global Open Energy System Optimization Model Demonstrated in Africa", 2022, https://arxiv.org/abs/2209.04663.
+Parzen et al., "PyPSA-Earth. A new global open energy system optimization model demonstrated in Africa", 2023, https://doi.org/10.1016/j.apenergy.2023.12109.
 Please use the following BibTeX: ::
 
-  @misc{PyPSAEarth,
-  author = {Parzen, Maximilian and Abdel-Khalek, Hazem and Fedorova, Ekaterina and Mahmood, Matin and Frysztacki, Martha Maria and Hampp, Johannes and Franken, Lukas and Schumm, Leon and Neumann, Fabian and Poli, Davide and Kiprakis, Aristides and Fioriti, Davide},
-  title = {PyPSA-Earth. A New Global Open Energy System Optimization Model Demonstrated in Africa},
-  publisher = {arXiv},
-  year = {2022},
-  url = {https://arxiv.org/abs/2209.04663},
-  doi = {10.48550/ARXIV.2209.04663},
+  @article{PyPSAEarth2023,
+  author = {Maximilian Parzen and Hazem Abdel-Khalek and Ekaterina Fedotova and Matin Mahmood and Martha Maria Frysztacki and Johannes Hampp and Lukas Franken and Leon Schumm and Fabian Neumann and Davide Poli and Aristides Kiprakis and Davide Fioriti},
+  title = {PyPSA-Earth. A new global open energy system optimization model demonstrated in Africa},
+  journal = {Applied Energy},
+  volume = {341},
+  pages = {121096},
+  year = {2023},
+  issn = {0306-2619},
+  doi = {https://doi.org/10.1016/j.apenergy.2023.121096},
+  url = {https://www.sciencedirect.com/science/article/pii/S0306261923004609},
+  keywords = {Macro-energy systems, Optimization, OpenStreetMap, PyPSA-Earth, PyPSA-Africa, PyPSA meets Earth},
   }
 
 .. _PyPSA_Eur:
@@ -65,4 +68,4 @@ Selected list:
 - Neumann et al. 2021 `"The near-optimal feasible space of a renewable power system model." <https://www.sciencedirect.com/science/article/pii/S0378779620304934>`_
 - Victoria et al. 2020 `"Early decarbonisation of the European energy system pays off." <https://www.nature.com/articles/s41467-020-20015-4>`_
 - Neumann et al. 2020 `"Costs of Regional Equity and Autarky in a Renewable European Power System." <https://arxiv.org/pdf/2007.08379.pdf>`_
-- Hörsch et al. 2017 `"The role of spatial scale in joint optimisations of generation and transmission for European highly renewable scenarios." <https://ieeexplore.ieee.org/abstract/document/7982024>`_ 
+- Hörsch et al. 2017 `"The role of spatial scale in joint optimisations of generation and transmission for European highly renewable scenarios." <https://ieeexplore.ieee.org/abstract/document/7982024>`_

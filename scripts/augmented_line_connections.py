@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: : 2021 The PyPSA-Africa Authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
-# coding: utf-8
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# -*- coding: utf-8 -*-
 """
 Guarantees that every bus has at least X-number of connections.
 
@@ -169,7 +170,7 @@ if __name__ == "__main__":
             lifetime=costs.at["HVAC overhead", "lifetime"],
         )
 
-        _set_links_underwater_fraction(n)
+        _set_links_underwater_fraction(snakemake.input.regions_offshore, n)
 
     n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
     n.export_to_netcdf(snakemake.output.network)

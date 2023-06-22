@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors, 2021 PyPSA-Africa Authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# -*- coding: utf-8 -*-
 """
 Creates Voronoi shapes for each bus representing both onshore and offshore regions.
 
@@ -28,13 +30,13 @@ Outputs
 
 - ``resources/regions_onshore.geojson``:
 
-    .. image:: ../img/regions_onshore.png
-        :scale: 33 %
+    .. image:: /img/regions_onshore.png
+        :width: 33 %
 
 - ``resources/regions_offshore.geojson``:
 
-    .. image:: ../img/regions_offshore.png
-        :scale: 33 %
+    .. image:: /img/regions_offshore.png
+        :width: 33 %
 
 Description
 -----------
@@ -47,13 +49,14 @@ import geopandas as gpd
 import numpy
 import pandas as pd
 import pypsa
-from _helpers import REGION_COLS, configure_logging, two_2_three_digits_country
+from _helpers import REGION_COLS, configure_logging
 from shapely.geometry import Point, Polygon
+from shapely.ops import unary_union
 from vresutils.graph import voronoi_partition_pts
 
 # from scripts.build_shapes import gadm
 
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def custom_voronoi_partition_pts(points, outline, add_bounds_shape=True, multiplier=5):
@@ -65,8 +68,6 @@ def custom_voronoi_partition_pts(points, outline, add_bounds_shape=True, multipl
     ----------
     points : Nx2 - ndarray[dtype=float]
     outline : Polygon
-    no_multipolygons : bool (default: False)
-        If true, replace each MultiPolygon by its largest component
 
     Returns
     -------
@@ -84,7 +85,6 @@ def custom_voronoi_partition_pts(points, outline, add_bounds_shape=True, multipl
     if len(points) == 1:
         polygons_arr = [outline]
     else:
-
         xmin, ymin = np.amin(points, axis=0)
         xmax, ymax = np.amax(points, axis=0)
 
@@ -122,6 +122,9 @@ def custom_voronoi_partition_pts(points, outline, add_bounds_shape=True, multipl
             if not poly.is_valid:
                 poly = poly.buffer(0)
 
+            if not outline.is_valid:
+                outline = outline.buffer(0)
+
             poly = poly.intersection(outline)
 
             polygons_arr[i] = poly
@@ -132,9 +135,7 @@ def custom_voronoi_partition_pts(points, outline, add_bounds_shape=True, multipl
 def get_gadm_shape(onshore_locs, gadm_shapes):
     def locate_bus(coords):
         point = Point(Point(coords["x"], coords["y"]))
-        gadm_shapes_country = gadm_shapes.filter(
-            like=two_2_three_digits_country(country), axis=0
-        )
+        gadm_shapes_country = gadm_shapes.filter(like=country, axis=0)
 
         try:
             return gadm_shapes[gadm_shapes.contains(point)].item()
@@ -145,9 +146,7 @@ def get_gadm_shape(onshore_locs, gadm_shapes):
 
     def get_id(coords):
         point = Point(Point(coords["x"], coords["y"]))
-        gadm_shapes_country = gadm_shapes.filter(
-            like=two_2_three_digits_country(country), axis=0
-        )
+        gadm_shapes_country = gadm_shapes.filter(like=country, axis=0)
 
         try:
             return gadm_shapes[gadm_shapes.contains(point)].index.item()
@@ -194,10 +193,9 @@ if __name__ == "__main__":
     offshore_regions = []
 
     for country in countries:
-
         c_b = n.buses.country == country
         if n.buses.loc[c_b & n.buses.substation_lv, ["x", "y"]].empty:
-            _logger.warning(f"No low voltage buses found for {country}!")
+            logger.warning(f"No low voltage buses found for {country}!")
             continue
 
         onshore_shape = country_shapes[country]
@@ -210,29 +208,32 @@ if __name__ == "__main__":
                 onshore_locs.values, onshore_shape
             )
             shape_id = 0  # Not used
-        onshore_regions.append(
-            gpd.GeoDataFrame(
-                {
-                    "name": onshore_locs.index,
-                    "x": onshore_locs["x"],
-                    "y": onshore_locs["y"],
-                    "geometry": onshore_geometry,
-                    "country": country,
-                    "shape_id": shape_id,
-                },
-                crs=country_shapes.crs,
-            )
+
+        temp_region = gpd.GeoDataFrame(
+            {
+                "name": onshore_locs.index,
+                "x": onshore_locs["x"],
+                "y": onshore_locs["y"],
+                "geometry": onshore_geometry,
+                "country": country,
+                "shape_id": shape_id,
+            },
+            crs=country_shapes.crs,
         )
+        temp_region = temp_region[
+            temp_region.geometry.is_valid & ~temp_region.geometry.is_empty
+        ]
+        onshore_regions.append(temp_region)
 
         # These two logging could be commented out
         if country not in offshore_shapes.index:
-            _logger.warning(f"No off-shore shapes for {country}")
+            logger.warning(f"No off-shore shapes for {country}")
             continue
 
         offshore_shape = offshore_shapes[country]
 
         if n.buses.loc[c_b & n.buses.substation_off, ["x", "y"]].empty:
-            _logger.warning(f"No off-shore substations found for {country}")
+            logger.warning(f"No off-shore substations found for {country}")
             continue
         else:
             offshore_locs = n.buses.loc[c_b & n.buses.substation_off, ["x", "y"]]
@@ -254,6 +255,10 @@ if __name__ == "__main__":
             offshore_regions_c = offshore_regions_c.loc[
                 offshore_regions_c.to_crs(area_crs).area > 1e-2
             ]
+            offshore_regions_c = offshore_regions_c[
+                offshore_regions_c.geometry.is_valid
+                & ~offshore_regions_c.geometry.is_empty
+            ]
             offshore_regions.append(offshore_regions_c)
 
     # create geodataframe and remove nan shapes
@@ -267,7 +272,7 @@ if __name__ == "__main__":
     )
 
     if offshore_regions:
-        # if a offshore_regions exists excute below
+        # if a offshore_regions exists execute below
         pd.concat(offshore_regions, ignore_index=True).to_file(
             snakemake.output.regions_offshore
         )

@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# -*- coding: utf-8 -*-
+
 import os
 from pathlib import Path
 
@@ -42,8 +45,8 @@ def sets_path_to_root(root_directory_name):
             break
         # if repo_name NOT current folder name for 5 levels then stop
         if n == 0:
-            print("Cant find the repo path.")
-        # if repo_name NOT current folder name, go one dir higher
+            print("Can't find the repo path.")
+        # if repo_name NOT current folder name, go one directory higher
         else:
             upper_path = os.path.dirname(os.path.abspath("."))  # name of upper folder
             os.chdir(upper_path)
@@ -67,7 +70,6 @@ def configure_logging(snakemake, skip_handlers=False):
     skip_handlers : True | False (default)
         Do (not) skip the default handlers created for redirecting output to STDERR and file.
     """
-
     import logging
 
     kwargs = snakemake.config.get("logging", dict()).copy()
@@ -90,7 +92,7 @@ def configure_logging(snakemake, skip_handlers=False):
                 ]
             }
         )
-    logging.basicConfig(**kwargs)
+    logging.basicConfig(**kwargs, force=True)
 
 
 def load_network(import_name=None, custom_components=None):
@@ -248,7 +250,6 @@ def aggregate_p_curtailed(n):
 
 
 def aggregate_costs(n, flatten=False, opts=None, existing_only=False):
-
     components = dict(
         Link=("p_nom", "p0"),
         Generator=("p_nom", "p"),
@@ -408,6 +409,8 @@ def mock_snakemake(rulename, **wildcards):
         job.rule.name,
         None,
     )
+    snakemake.benchmark = job.benchmark
+
     # create log and output dir if not existent
     for path in list(snakemake.log) + list(snakemake.output):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -570,14 +573,17 @@ def read_csv_nafix(file, **kwargs):
     if "na_values" in kwargs:
         del kwargs["na_values"]
 
-    return pd.read_csv(file, **kwargs, keep_default_na=False, na_values=NA_VALUES)
+    if os.stat(file).st_size > 0:
+        return pd.read_csv(file, **kwargs, keep_default_na=False, na_values=NA_VALUES)
+    else:
+        return pd.DataFrame()
 
 
 def to_csv_nafix(df, path, **kwargs):
     if "na_rep" in kwargs:
         del kwargs["na_rep"]
     # if len(df) > 0:
-    if not df.empty:
+    if not df.empty or not df.columns.empty:
         return df.to_csv(path, **kwargs, na_rep=NA_VALUES[0])
     else:
         with open(path, "w") as fp:
@@ -605,3 +611,85 @@ def read_geojson(fn):
     else:
         # else return an empty GeoDataFrame
         return gpd.GeoDataFrame(geometry=[])
+
+
+def create_country_list(input, iso_coding=True):
+    """
+    Create a country list for defined regions in config_osm_data.py
+
+    Parameters
+    ----------
+    input : str
+        Any two-letter country name, regional name, or continent given in config_osm_data.py
+        Country name duplications won't distort the result.
+        Examples are:
+        ["NG","ZA"], downloading osm data for Nigeria and South Africa
+        ["africa"], downloading data for Africa
+        ["NAR"], downloading data for the North African Power Pool
+        ["TEST"], downloading data for a customized test set.
+        ["NG","ZA","NG"], won't distort result.
+
+    Returns
+    -------
+    full_codes_list : list
+        Example ["NG","ZA"]
+    """
+    import logging
+
+    from config_osm_data import continent_regions, world_iso
+
+    _logger = logging.getLogger(__name__)
+    _logger.setLevel(logging.INFO)
+
+    def filter_codes(c_list, iso_coding=True):
+        """
+        Filter list according to the specified coding.
+        When iso code are implemented (iso_coding=True), then remove the geofabrik-specific ones.
+        When geofabrik codes are selected(iso_coding=False), ignore iso-specific names.
+        """
+        if (
+            iso_coding
+        ):  # if country lists are in iso coding, then check if they are 2-string
+            # 2-code countries
+            ret_list = [c for c in c_list if len(c) == 2]
+
+            # check if elements have been removed and return a working if so
+            if len(ret_list) < len(c_list):
+                _logger.warning(
+                    "Specified country list contains the following non-iso codes: "
+                    + ", ".join(list(set(c_list) - set(ret_list)))
+                )
+
+            return ret_list
+        else:
+            return c_list  # [c for c in c_list if c not in iso_to_geofk_dict]
+
+    full_codes_list = []
+
+    for value1 in input:
+        codes_list = []
+
+        # extract countries in world
+        if value1 == "Earth":
+            for continent in world_iso.keys():
+                codes_list.extend(list(world_iso[continent]))
+
+        # extract countries in continent
+        elif value1 in world_iso.keys():
+            codes_list = list(world_iso[value1])
+
+        # extract countries in regions
+        elif value1 in continent_regions.keys():
+            codes_list = continent_regions[value1]
+
+        # extract countries
+        else:
+            codes_list.extend([value1])
+
+        # create a list with all countries
+        full_codes_list.extend(codes_list)
+
+    # Removing duplicates and filter outputs by coding
+    full_codes_list = filter_codes(list(set(full_codes_list)), iso_coding=iso_coding)
+
+    return full_codes_list

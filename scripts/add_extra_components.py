@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors, 2021 PyPSA-Africa Authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: MIT
-# coding: utf-8
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# -*- coding: utf-8 -*-
 """
 Adds extra extendable components to the clustered and simplified network.
 
@@ -13,6 +14,8 @@ Relevant Settings
 
     costs:
         year:
+        version:
+        rooftop_share:
         USD2013_to_EUR2013:
         dicountrate:
         emission_prices:
@@ -32,7 +35,7 @@ Relevant Settings
 Inputs
 ------
 
-- ``data/costs.csv``: The database of cost assumptions for all included technologies for specific years from various sources; e.g. discount rate, lifetime, investment (CAPEX), fixed operation and maintenance (FOM), variable operation and maintenance (VOM), fuel costs, efficiency, carbon-dioxide intensity.
+- ``resources/costs.csv``: The database of cost assumptions for all included technologies for specific years from various sources; e.g. discount rate, lifetime, investment (CAPEX), fixed operation and maintenance (FOM), variable operation and maintenance (VOM), fuel costs, efficiency, carbon-dioxide intensity.
 
 Outputs
 -------
@@ -67,8 +70,8 @@ idx = pd.IndexSlice
 logger = logging.getLogger(__name__)
 
 
-def attach_storageunits(n, costs):
-    elec_opts = snakemake.config["electricity"]
+def attach_storageunits(n, costs, config):
+    elec_opts = config["electricity"]
     carriers = elec_opts["extendable_carriers"]["StorageUnit"]
     max_hours = elec_opts["max_hours"]
 
@@ -96,8 +99,8 @@ def attach_storageunits(n, costs):
         )
 
 
-def attach_stores(n, costs):
-    elec_opts = snakemake.config["electricity"]
+def attach_stores(n, costs, config):
+    elec_opts = config["electricity"]
     carriers = elec_opts["extendable_carriers"]["Store"]
 
     _add_missing_carriers_from_costs(n, costs, carriers)
@@ -115,7 +118,7 @@ def attach_stores(n, costs):
             carrier="H2",
             e_nom_extendable=True,
             e_cyclic=True,
-            capital_cost=costs.at["hydrogen storage", "capital_cost"],
+            capital_cost=costs.at["hydrogen storage tank", "capital_cost"],
         )
 
         n.madd(
@@ -183,8 +186,8 @@ def attach_stores(n, costs):
         )
 
 
-def attach_hydrogen_pipelines(n, costs):
-    elec_opts = snakemake.config["electricity"]
+def attach_hydrogen_pipelines(n, costs, config):
+    elec_opts = config["electricity"]
     ext_carriers = elec_opts["extendable_carriers"]
     as_stores = ext_carriers.get("Store", [])
 
@@ -234,16 +237,18 @@ if __name__ == "__main__":
 
     n = pypsa.Network(snakemake.input.network)
     Nyears = n.snapshot_weightings.objective.sum() / 8760.0
+    config = snakemake.config
+
     costs = load_costs(
         snakemake.input.tech_costs,
-        snakemake.config["costs"],
-        snakemake.config["electricity"],
+        config["costs"],
+        config["electricity"],
         Nyears,
     )
 
-    attach_storageunits(n, costs)
-    attach_stores(n, costs)
-    attach_hydrogen_pipelines(n, costs)
+    attach_storageunits(n, costs, config)
+    attach_stores(n, costs, config)
+    attach_hydrogen_pipelines(n, costs, config)
 
     add_nice_carrier_names(n, config=snakemake.config)
 

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 # Copyright 2019-2020 Fabian Hofmann (FIAS)
-# SPDX-FileCopyrightText: : 2022 PyPSA-Earth, 2021-2022 PyPSA-Africa, 2017-2020 The PyPSA-Eur Authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 """
 .. image:: https://zenodo.org/badge/DOI/10.5281/zenodo.5894972.svg
    :target: https://doi.org/10.5281/zenodo.5894972
@@ -86,12 +87,15 @@ import re
 from zipfile import ZipFile
 
 import yaml
-from _helpers import configure_logging, progress_retrieve, sets_path_to_root
-from download_osm_data import create_country_list
+from _helpers import (
+    configure_logging,
+    create_country_list,
+    progress_retrieve,
+    sets_path_to_root,
+)
 from google_drive_downloader import GoogleDriveDownloader as gdd
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 def load_databundle_config(config):
@@ -492,14 +496,13 @@ def get_best_bundles_by_category(
     # check if non-empty dictionary
     if dict_n_matched:
         # if non-empty, then pick bundles until all countries are selected
-        # or no mor bundles are found
+        # or no more bundles are found
         dict_sort = sorted(dict_n_matched.items(), key=lambda d: d[1])
 
         current_matched_countries = []
         remaining_countries = set(country_list)
 
         for d_val in dict_sort:
-
             bname = d_val[0]
 
             cbundle_list = set(config_bundles[bname]["countries"])
@@ -556,7 +559,7 @@ def get_best_bundles(countries, config_bundles, tutorial, config_enable):
         set([config_bundles[conf]["category"] for conf in config_bundles])
     )
 
-    # idenfify matched countries for every bundle
+    # identify matched countries for every bundle
     for bname in config_bundles:
         config_bundles[bname]["matched_countries"] = [
             c for c in config_bundles[bname]["countries"] if c in countries
@@ -617,7 +620,6 @@ def datafiles_retrivedatabundle(config):
 
 
 if __name__ == "__main__":
-
     if "snakemake" not in globals():
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
         from _helpers import mock_snakemake
@@ -664,7 +666,6 @@ if __name__ == "__main__":
 
         # loop all hosts until data is successfully downloaded
         for host in host_list:
-
             logger.info(f"Downloading bundle {b_name} - Host {host}")
 
             try:

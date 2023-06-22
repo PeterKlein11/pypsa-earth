@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: : 2021 PyPSA-Africa Authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# -*- coding: utf-8 -*-
+
 import logging
 import os
 
@@ -14,7 +17,6 @@ from shapely.ops import linemerge, split
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 def line_endings_to_bus_conversion(lines):
@@ -32,77 +34,6 @@ def line_endings_to_bus_conversion(lines):
     lines["bus1_lat"] = lines["bus_1_coors"].y
 
     return lines
-
-
-def create_bus_df_from_lines(substations, lines):
-    # extract columns from substation df
-    bus_s = gpd.GeoDataFrame(columns=substations.columns)
-    bus_e = gpd.GeoDataFrame(columns=substations.columns)
-
-    # Read information from line.csv
-    bus_s[["voltage", "lon", "lat", "geometry", "country"]] = lines[
-        ["voltage", "bus0_lon", "bus0_lat", "bus_0_coors", "country"]
-    ]  # line start points
-    bus_e[["voltage", "lon", "lat", "geometry", "country"]] = lines[
-        ["voltage", "bus1_lon", "bus1_lat", "bus_1_coors", "country"]
-    ]  # line end points
-    bus_all = bus_s.append(bus_e).reset_index(drop=True)
-
-    # Assign index to bus_id
-    bus_all.loc[:, "bus_id"] = bus_all.index
-    buses = bus_all
-
-    # Removing the NaN
-    buses["dc"] = "False"
-    buses["symbol"] = "False"
-    buses["under_construction"] = "False"
-    buses["tag_substation"] = "False"
-    buses["tag_area"] = "False"
-    buses["substation_lv"] = True
-
-    return buses
-
-
-def add_line_endings_tosubstations(substations, lines):
-    # extract columns from substation df
-    bus_s = gpd.GeoDataFrame(columns=substations.columns)
-    bus_e = gpd.GeoDataFrame(columns=substations.columns)
-
-    is_ac = lines["tag_frequency"].astype(float) != 0
-
-    # Read information from line.csv
-    bus_s[["voltage", "country"]] = lines[["voltage", "country"]]  # line start points
-    bus_s["geometry"] = lines.geometry.boundary.map(lambda p: p.geoms[0])
-    bus_s["lon"] = bus_s["geometry"].x
-    bus_s["lat"] = bus_s["geometry"].y
-    bus_s["bus_id"] = lines["line_id"].astype(str) + "_s"
-    bus_s["dc"] = ~is_ac
-
-    bus_e[["voltage", "country"]] = lines[["voltage", "country"]]  # line start points
-    bus_e["geometry"] = lines.geometry.boundary.map(lambda p: p.geoms[1])
-    bus_e["lon"] = bus_s["geometry"].x
-    bus_e["lat"] = bus_s["geometry"].y
-    bus_e["bus_id"] = lines["line_id"].astype(str) + "_e"
-    bus_e["dc"] = ~is_ac
-
-    bus_all = pd.concat([bus_s, bus_e], ignore_index=True)
-    # Assign index to bus_id
-    bus_all.loc[:, "bus_id"] = bus_all.index
-    buses = bus_all
-
-    # Add NaN as default
-    bus_all["station_id"] = np.nan
-    # bus_all["dc"] = False  # np.nan
-    # Assuming substations completed for installed lines
-    bus_all["under_construction"] = False
-    bus_all["tag_area"] = 0.0  # np.nan
-    bus_all["symbol"] = "substation"
-    # TODO: this tag may be improved, maybe depending on voltage levels
-    bus_all["tag_substation"] = "transmission"
-
-    buses = substations.append(bus_all).reset_index(drop=True)
-
-    return buses
 
 
 # tol in m
@@ -196,9 +127,6 @@ def set_lines_ids(lines, buses, distance_crs):
     linesepsg = lines.to_crs(distance_crs)
 
     for i, row in tqdm(linesepsg.iterrows(), **tqdm_kwargs_line_ids):
-
-        row["dc"] = float(row["tag_frequency"]) == 0
-
         # select buses having the voltage level of the current line
         buses_sel = busesepsg[
             (buses["voltage"] == row["voltage"]) & (buses["dc"] == row["dc"])
@@ -262,11 +190,10 @@ def merge_stations_same_station_id(
     # initialize list of cleaned buses
     buses_clean = []
 
-    # initalize the number of buses
+    # initialize the number of buses
     n_buses = 0
 
-    for g_name, g_value in buses.groupby(by=["station_id"]):
-
+    for g_name, g_value in buses.groupby(by="station_id"):
         # average location of the buses having the same station_id
         station_point_x = np.round(g_value.geometry.x.mean(), precision)
         station_point_y = np.round(g_value.geometry.y.mean(), precision)
@@ -276,7 +203,6 @@ def merge_stations_same_station_id(
         # each bus corresponding to a voltage level and each polatity is located at a distance regulated by delta_lon/delta_lat
         v_it = 0
         for v_name, bus_row in g_value.groupby(by=["voltage", "dc"]):
-
             lon_bus = np.round(station_point_x + v_it * delta_lon, precision)
             lat_bus = np.round(station_point_y + v_it * delta_lat, precision)
 
@@ -357,14 +283,12 @@ def get_transformers(buses, lines):
     # Transformers should be added between AC buses only
     buses_ac = buses[~buses["dc"]]
     for g_name, g_value in buses_ac.sort_values("voltage", ascending=True).groupby(
-        by=["station_id"]
+        by="station_id"
     ):
-
         # note: by construction there cannot be more that two buses with the same station_id and same voltage
         n_voltages = len(g_value)
 
         if n_voltages > 1:
-
             for id in range(0, n_voltages - 1):
                 # when g_value has more than one node, it means that there are multiple voltages for the same bus
                 geom_trans = LineString(
@@ -410,15 +334,13 @@ def get_converters(buses, lines):
     df_converters = []
 
     for g_name, g_value in buses.sort_values("voltage", ascending=True).groupby(
-        by=["station_id"]
+        by="station_id"
     ):
-
         # note: by construction there cannot be more that two buses with the same station_id and same voltage
         n_voltages = len(g_value)
 
         # A converter stations should have both AC and DC parts
         if g_value["dc"].any() & ~g_value["dc"].all():
-
             dc_voltage = g_value[g_value.dc]["voltage"].values
 
             for u in dc_voltage:
@@ -666,7 +588,7 @@ def _split_linestring_by_point(linestring, points):
     Parameters
     ----------
     lstring : LineString
-        Linestring of the line to be splitted
+        Linestring of the line to be split
     points : list
         List of points to split the linestring
 
@@ -700,11 +622,11 @@ def fix_overpassing_lines(lines, buses, distance_crs, tol=1):
         Geodataframe of substations
     tol : float
         Tolerance in meters of the distance between the substation and the line
-        below which the line will be splitted
+        below which the line will be split
     """
 
     lines_to_add = []  # list of lines to be added
-    lines_to_split = []  # list of lines that have been splitted
+    lines_to_split = []  # list of lines that have been split
 
     lines_epsgmod = lines.to_crs(distance_crs)
     buses_epsgmod = buses.to_crs(distance_crs)
@@ -718,7 +640,6 @@ def fix_overpassing_lines(lines, buses, distance_crs, tol=1):
     )
 
     for l in tqdm(lines.index, **tqdm_kwargs_substation_ids):
-
         # bus indices being within tolerance from the line
         bus_in_tol_epsg = buses_epsgmod[
             buses_epsgmod.geometry.distance(lines_epsgmod.geometry.loc[l]) <= tol
@@ -784,27 +705,45 @@ def fix_overpassing_lines(lines, buses, distance_crs, tol=1):
     return lines, buses
 
 
-def built_network(inputs, outputs, geo_crs, distance_crs):
+def force_ac_lines(df, col="tag_frequency"):
+    """
+    Function that forces all PyPSA lines to be AC lines.
 
+    A network can contain AC and DC power lines that are modelled as PyPSA "Line" component.
+    When DC lines are available, their power flow can be controlled by their converter.
+    When it is artificially converted into AC, this feature is lost.
+    However, for debugging and preliminary analysis, it can be useful to bypass problems.
+    """
+    # TODO: default frequency may be by country
+    default_ac_frequency = 50
+
+    df["tag_frequency"] = default_ac_frequency
+    df["dc"] = False
+
+    return df
+
+
+def built_network(inputs, outputs, config, geo_crs, distance_crs, force_ac=False):
     logger.info("Stage 1/5: Read input data")
 
-    substations = gpd.read_file(inputs["substations"])
+    buses = gpd.read_file(inputs["substations"])
     lines = gpd.read_file(inputs["lines"])
     generators = read_geojson(inputs["generators"])
 
-    logger.info("Stage 2/5: Add line endings to the substation datasets")
-
-    # Use lines and create bus/line df
     lines = line_endings_to_bus_conversion(lines)
-    buses = add_line_endings_tosubstations(substations, lines)
+
+    if force_ac:
+        logger.info(
+            "Stage 2/5: AC and DC network: disabled, forced buses and lines to AC"
+        )
+        lines = force_ac_lines(lines)
+        buses["dc"] = False
+    else:
+        logger.info("Stage 2/5: AC and DC network: enabled")
 
     # Address the overpassing line issue Step 3/5
-    if snakemake.config.get("build_osm_network", {}).get(
-        "split_overpassing_lines", False
-    ):
-        tol = snakemake.config["build_osm_network"].get(
-            "overpassing_lines_tolerance", 1
-        )
+    if config.get("build_osm_network", {}).get("split_overpassing_lines", False):
+        tol = config["build_osm_network"].get("overpassing_lines_tolerance", 1)
         logger.info("Stage 3/5: Avoid nodes overpassing lines: enabled with tolerance")
 
         lines, buses = fix_overpassing_lines(lines, buses, distance_crs, tol=tol)
@@ -812,8 +751,8 @@ def built_network(inputs, outputs, geo_crs, distance_crs):
         logger.info("Stage 3/5: Avoid nodes overpassing lines: disabled")
 
     # METHOD to merge buses with same voltage and within tolerance Step 4/5
-    if snakemake.config.get("build_osm_network", {}).get("group_close_buses", False):
-        tol = snakemake.config["build_osm_network"].get("group_tolerance_buses", 500)
+    if config.get("build_osm_network", {}).get("group_close_buses", False):
+        tol = config["build_osm_network"].get("group_tolerance_buses", 500)
         logger.info(
             f"Stage 4/5: Aggregate close substations: enabled with tolerance {tol} m"
         )
@@ -825,14 +764,16 @@ def built_network(inputs, outputs, geo_crs, distance_crs):
 
     logger.info("Stage 5/5: Add augmented substation to country with no data")
 
-    country_shapes_fn = snakemake.input.country_shapes
+    country_shapes_fn = inputs.country_shapes
     country_shapes = gpd.read_file(country_shapes_fn).set_index("name")["geometry"]
-    input = snakemake.config["countries"]
-    country_list = input
+    country_list = config["countries"]
     bus_country_list = buses["country"].unique().tolist()
 
-    if len(bus_country_list) != len(country_list):
-        no_data_countries = set(country_list).difference(set(bus_country_list))
+    # it may happen that bus_country_list contains entries not relevant as a country name (e.g. "not found")
+    # difference can't give negative values; the following will return only relevant country names
+    no_data_countries = list(set(country_list).difference(set(bus_country_list)))
+
+    if len(no_data_countries) > 0:
         no_data_countries_shape = country_shapes[
             country_shapes.index.isin(no_data_countries) == True
         ].reset_index()
@@ -856,10 +797,21 @@ def built_network(inputs, outputs, geo_crs, distance_crs):
                 .centroid,
                 "substation_lv": [True] * length,
             }
-        )
+        ).astype(
+            buses.dtypes.to_dict()
+        )  # keep the same dtypes as buses
         buses = gpd.GeoDataFrame(
             pd.concat([buses, df], ignore_index=True).reset_index(drop=True),
             crs=buses.crs,
+        )
+
+    non_allocated_countries = list(
+        set(country_list).symmetric_difference(set(bus_country_list))
+    )
+
+    if len(non_allocated_countries) > 0:
+        logger.error(
+            f"There following countries could not be allocated properly: {non_allocated_countries}"
         )
 
     # get transformers: modelled as lines connecting buses with different voltage
@@ -898,7 +850,15 @@ if __name__ == "__main__":
     # load default crs
     geo_crs = snakemake.config["crs"]["geo_crs"]
     distance_crs = snakemake.config["crs"]["distance_crs"]
+    force_ac = snakemake.config["build_osm_network"].get("force_ac", False)
 
     sets_path_to_root("pypsa-earth")
 
-    built_network(snakemake.input, snakemake.output, geo_crs, distance_crs)
+    built_network(
+        snakemake.input,
+        snakemake.output,
+        snakemake.config,
+        geo_crs,
+        distance_crs,
+        force_ac=force_ac,
+    )

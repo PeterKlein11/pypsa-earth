@@ -1,15 +1,51 @@
+.. SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 ..
-  SPDX-FileCopyrightText: 2021 The PyPSA-Earth Authors
-
-  SPDX-License-Identifier: CC-BY-4.0
+.. SPDX-License-Identifier: CC-BY-4.0
 
 ##########################################
 Release Notes
 ##########################################
 
-
-Upcoming Release
+Upcoming release
 ================
+
+Please add descriptive release notes like in `PyPSA-Eur <https://github.com/PyPSA/pypsa-eur/blob/master/doc/release_notes.rst>`__.
+E.g. if a new rule becomes available describe how to use it `snakemake -j1 run_tests` and in one sentence what it does.
+
+* Fix Natural Gas assignment bug in build_powerplants rule `PR #754 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/754>`__.
+
+* Add GEM datasets to the powerplantmatching config `PR #750 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/750>`__.
+
+* Add merge and replace functionalities when adding custom powerplants `PR #739 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/739>`__. "Merge" combined the powerplantmatching data with new custom data. "Replace" allows to use fully self-collected data.
+
+* Add functionality of attaching existing renewable caapcities from custom_powerplants.csv. `PR #744 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/744>`__. If custom_powerplants are enabled and custom_powerplants.csv contains wind or solar powerplants, then p_nom and p_nom_min for renewables are extracted from custom_powerplants.csv, aggregated for each bus, and set.
+
+* Fix dask parallel computations for e.g. cutouts calculations. Now again more than 1 core will be used when available that can lead to ~8x speed ups with 8 cores `PR #734 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/734>`__ and `PR #761 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/761>`__.
+
+* Add the usage of custom rules. Custom rule files must be specified in the config as a list, e.g. custom rules: ["my_rules.smk"]. Empty by default (i.e. no custom rules). `PR #755 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/755>`__
+
+* Add trailing whitespace linter which removes unnecessary tabs when running `pre-commit` `PR #762 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/762>`__
+
+* Add codespell linter which corrects word spellings `PR #763 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/763>`__
+
+* Remove RES addition functionality from attach_conventional_generators `PR #769 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/769>`__. Currently wind and solar powerplants stored in powerplants.csv are added to the network by attach_conventional_generators.
+
+PyPSA-Earth 0.2.1
+=================
+
+**New Features and major Changes**
+
+* Fix bug. Add graphviz to docs to compile workflows in the documentation and adapt release notes `PR #719 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/719>`__
+
+* License change from GPL to AGPL as voted `here <https://github.com/pypsa-meets-earth/pypsa-earth/issues/693>`__
+
+* Fix hard-coded simplification of lines to 380kV `PR #732 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/732>`__.
+  It is now possible to simplify the network to any other voltage level with config option `base_voltage`.
+
+* Fix a KeyError in simplify_links caused by misinterpretation of AC lines as DC ones `PR #740 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/740>`__.
+
+PyPSA-Earth 0.2.0
+=================
 
 **New Features and major Changes**
 
@@ -19,7 +55,7 @@ Upcoming Release
 
 * Add new config test design. It is now easy and light to test multiple configs `PR #466 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/466>`__
 
-* Revision of documenation `PR #471 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/471>`__
+* Revision of documentation `PR #471 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/471>`__
 
 * Move to new GADM version `PR #478 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/478>`__
 
@@ -41,10 +77,70 @@ Upcoming Release
 
 * Calculate the outputs of retrieve_databundle dynamically depending on settings `PR #529 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/529>`__
 
+* Fix shape bug in the Voronoi cell creation `PR #541 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/541>`__
+
+* Adapt dependencies on PyPSA to the PyPSA main branch `PR #538 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/538>`__
+
+* Fix None geometries into regions `PR #546 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/546>`__
+
+* Swap OpenStreetMap python download interface from esy-osm to earth-osm `PR #547 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/547>`__
+
+* Restore saving of logger outputs `PR #559 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/559>`__
+
+* Techno-economic parameters of technologies (e.g. costs and efficiencies) can be now retrieved from a separate repository `PyPSA/technology-data <https://github.com/pypsa/technology-data>`_
+  that collects assumptions from a variety of sources. It is activated by default with ``enable: retrieve_cost_data: true`` and controlled with ``costs: year:`` and ``costs: version:``.
+  The location of this data changed from ``data/costs.csv`` to ``resources/costs.csv``. Adapted from [`#184 <https://github.com/PyPSA/pypsa-eur/pull/184>`_].
+
+* Added approaches to process contended areas `PR #572 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/572>`__
+
+* Improve parallel capabilities of build_shapes to enable parallelization even within a country shape `PR #575 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/575>`__
+
+* Add pypsa-eur scenario management `PR #577 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/577>`__
+
+* Minor bug fixing and improvements `PR #580 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/580>`__
+
+* Streamline default configuration file `PR #589 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/589>`__
+
+* Fix rule run_test, remove code duplication, add gitstars to readme `PR #593 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/593>`
+
+* Add new build_demand_profiles.py. It builds demand_profiles.csv and allow easier interfacing of new data `PR #582 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/582>`__
+
+* Upgrade technology data to v0.5.0 `PR #600 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/600>`__
+
+* Update simplify_network and cluster_network according to PyPSA-Eur developments `PR #597 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/597>`__
+
+* Revise OSM cleaning to improve the cleaning process and error resilience `PR #620 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/620>`__
+
+* Fix isolated buses when simplifying the network and add clustering by networks `PR #632 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/632>`__
+
+* Include hydro runoff normalization `PR #631 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/631>`__
+
+* Add REUSE compatibility `PR #651 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/651>`__
+
+* Fix bug of missing GitHub issue template `PR #660 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/660>`__
+
+* Fix GADM bug when using alternative clustering and store gadm shape with two letter instead of three letter ISO code  `PR #670 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/670>`__
+
+* Fix GADM naming bug related to level-2 clustering `PR #684 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/684>`__
+
+* Fix append bug in build_powerplants rule `PR #686 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/686>`__
+
+* Add *zenodo_handler.py* to update and upload files via code `PR #688 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/688>`__
+
+* Fix a few typos in docstrings `PR #695 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/695>`__
+
+* Update and improve configuration section in documentation `PR #694 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/694>`__
+
+* Improve earth coverage and add improve make_statistics coverage `PR #654 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/654>`__
+
+* Fix bug for missing renewable profiles and generators `PR #714 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/714>`__
+
+* Update instructions on how to write documentation. `PR #720 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/720>`__
+
 PyPSA-Earth 0.1.0
 =================
 
-Model rebranded from PyPSA-Africa to PyPSA-Earth. Model is part of the now called PyPSA meets Earth initiative which hosts mutliple projects.
+Model rebranded from PyPSA-Africa to PyPSA-Earth. Model is part of the now called PyPSA meets Earth initiative which hosts multiple projects.
 
 **New features and major changes (10th September 2022)**
 
@@ -150,7 +246,7 @@ Model rebranded from PyPSA-Africa to PyPSA-Earth. Model is part of the now calle
 
 * Bug fixing to download global OSM and shape data: `PR #433 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/433>`_
 
-PyPSA-Africa 0.0.2 
+PyPSA-Africa 0.0.2
 ==================
 
 **New features and major changes (6th April 2022)**
@@ -188,7 +284,7 @@ PyPSA-Africa 0.0.2
 * Revise deprecations in build_shape: `PR #315 <https://github.com/pypsa-meets-earth/pypsa-earth/pull/315>`__
 
 
-PyPSA-Africa 0.0.1 
+PyPSA-Africa 0.0.1
 ==================
 
 This is the first release of PyPSA-Africa which heavily builds on `PyPSA-Eur <https://github.com/PyPSA/pypsa-eur>`__.

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
+#
+# SPDX-License-Identifier: CC0-1.0
 
 # Byte-compiled / optimized / DLL files
 **/__pycache__
@@ -15,6 +18,10 @@
 config.yaml
 dag.svg
 
+# Files appear for tests
+configs/scenarios/config.custom.yaml
+data/*.csv
+
 # Untracked folders (and files within)
 img/
 .snakemake/
@@ -24,13 +31,13 @@ data/
 data/osm/
 data/raw/
 data/base_network/
-results/summaries/
-results/plots/
+results/
 networks/
 resources/
 scripts/temp
 scripts/test.py
 test/tmp/
+dask-worker-space/
 
 # Untrack some Jupyter changes
 .ipynb_checkpoints
@@ -47,13 +54,7 @@ notebooks/old_notebooks/*.tif
 doc/_build
 
 # VS code related
-.vscode
-doc/.vscode/settings.json
-.vscode/settings.json
-resources/regions_onshore.geojson
-resources/regions_offshore.geojson
-resources/regions_onshore.geojson
-resources/regions_onshore.geojson
-resources/regions_offshore.geojson
-resources/regions_onshore.geojson
-resources/regions_offshore.geojson
+*.vscode
+doc/*.vscode/settings.json
+*.vscode/settings.json
+*.code-workspace

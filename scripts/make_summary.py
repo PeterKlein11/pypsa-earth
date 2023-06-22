@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors, 2021 PyPSA-Africa Authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# -*- coding: utf-8 -*-
 """
 Creates summaries of aggregated energy and costs as ``.csv`` files.
 Relevant Settings
@@ -23,7 +25,7 @@ Outputs
 -------
 Description
 -----------
-The following rule can be used to summarize the results in seperate .csv files:
+The following rule can be used to summarize the results in separate .csv files:
 .. code::
     snakemake results/summaries/elec_s_all_lall_Co2L-3H_all
                                          clusters
@@ -33,7 +35,7 @@ The following rule can be used to summarize the results in seperate .csv files:
 the line volume/cost cap field can be set to one of the following:
 * ``lv1.25`` for a particular line volume extension by 25%
 * ``lc1.25`` for a line cost extension by 25 %
-* ``lall`` for all evalutated caps
+* ``lall`` for all evaluated caps
 * ``lvall`` for all line volume caps
 * ``lcall`` for all line cost caps
 Replacing '/summaries/' with '/plots/' creates nice colored maps of the results.
@@ -62,7 +64,6 @@ def _add_indexed_rows(df, raw_index):
 
 
 def assign_carriers(n):
-
     if "carrier" not in n.loads:
         n.loads["carrier"] = "electricity"
         for carrier in ["transport", "heat", "urban heat"]:
@@ -89,7 +90,6 @@ def assign_carriers(n):
 
 
 def calculate_costs(n, label, costs):
-
     for c in n.iterate_components(
         n.branch_components | n.controllable_one_port_components ^ {"Load"}
     ):
@@ -135,7 +135,6 @@ def calculate_costs(n, label, costs):
 
 
 def calculate_curtailment(n, label, curtailment):
-
     avail = (
         n.generators_t.p_max_pu.multiply(n.generators.p_nom_opt)
         .sum()
@@ -150,9 +149,7 @@ def calculate_curtailment(n, label, curtailment):
 
 
 def calculate_energy(n, label, energy):
-
     for c in n.iterate_components(n.one_port_components | n.branch_components):
-
         if c.name in {"Generator", "Load", "ShuntImpedance"}:
             c_energies = (
                 c.pnl.p.multiply(n.snapshot_weightings.generators, axis=0)
@@ -189,7 +186,6 @@ def calculate_energy(n, label, energy):
 
 
 def include_in_summary(summary, multiindexprefix, label, item):
-
     # Index tuple(s) indicating the newly to-be-added row(s)
     raw_index = tuple([multiindexprefix, list(item.index)])
     summary = _add_indexed_rows(summary, raw_index)
@@ -200,7 +196,6 @@ def include_in_summary(summary, multiindexprefix, label, item):
 
 
 def calculate_capacity(n, label, capacity):
-
     for c in n.iterate_components(n.one_port_components):
         if "p_nom_opt" in c.df.columns:
             c_capacities = (
@@ -225,7 +220,6 @@ def calculate_supply(n, label, supply):
     load_types = n.loads.carrier.value_counts().index
 
     for i in load_types:
-
         buses = n.loads.bus[n.loads.carrier == i].values
 
         bus_map = pd.Series(False, index=n.buses.index)
@@ -233,7 +227,6 @@ def calculate_supply(n, label, supply):
         bus_map.loc[buses] = True
 
         for c in n.iterate_components(n.one_port_components):
-
             items = c.df.index[c.df.bus.map(bus_map)]
 
             if len(items) == 0 or c.pnl.p.empty:
@@ -254,9 +247,7 @@ def calculate_supply(n, label, supply):
             supply.loc[idx[raw_index], label] = s.values
 
         for c in n.iterate_components(n.branch_components):
-
             for end in ["0", "1"]:
-
                 items = c.df.index[c.df["bus" + end].map(bus_map)]
 
                 if len(items) == 0 or c.pnl["p" + end].empty:
@@ -283,7 +274,6 @@ def calculate_supply_energy(n, label, supply_energy):
     load_types = n.loads.carrier.value_counts().index
 
     for i in load_types:
-
         buses_tot = n.loads.bus[n.loads.carrier == i].values
 
         bus_map = pd.Series(False, index=n.buses.index)
@@ -291,7 +281,6 @@ def calculate_supply_energy(n, label, supply_energy):
         bus_map.loc[buses_tot] = True
 
         for c in n.iterate_components(n.one_port_components):
-
             items_c = c.df.index[c.df.bus.map(bus_map)]
 
             if len(items_c) == 0 or c.pnl.p.empty:
@@ -312,9 +301,7 @@ def calculate_supply_energy(n, label, supply_energy):
             supply_energy.loc[idx[raw_index], label] = s.values
 
         for c in n.iterate_components(n.branch_components):
-
             for end in ["0", "1"]:
-
                 items_cend = c.df.index[c.df["bus" + end].map(bus_map)]
 
                 if len(items_cend) == 0 or c.pnl["p" + end].empty:
@@ -335,7 +322,6 @@ def calculate_supply_energy(n, label, supply_energy):
 
 
 def calculate_metrics(n, label, metrics):
-
     metrics = metrics.reindex(
         metrics.index.union(
             pd.Index(
@@ -372,7 +358,6 @@ def calculate_metrics(n, label, metrics):
 
 
 def calculate_prices(n, label, prices):
-
     bus_type = pd.Series(n.buses.index.str[3:], n.buses.index).replace(
         "", "electricity"
     )
@@ -386,7 +371,6 @@ def calculate_prices(n, label, prices):
 
 
 def calculate_weighted_prices(n, label, weighted_prices):
-
     logger.warning("Weighted prices don't include storage units as loads")
 
     weighted_prices = weighted_prices.reindex(
@@ -419,7 +403,6 @@ def calculate_weighted_prices(n, label, weighted_prices):
     }
 
     for carrier in link_loads:
-
         if carrier == "electricity":
             suffix = ""
         elif carrier[:5] == "space":
@@ -440,7 +423,6 @@ def calculate_weighted_prices(n, label, weighted_prices):
             load = n.loads_t.p_set[buses]
 
         for tech in link_loads[carrier]:
-
             names = n.links.index[n.links.index.to_series().str[-len(tech) :] == tech]
 
             if names.empty:
@@ -485,8 +467,7 @@ outputs = [
 ]
 
 
-def make_summaries(networks_dict, country="all"):
-
+def make_summaries(networks_dict, inputs, config, country="all"):
     columns = pd.MultiIndex.from_tuples(
         networks_dict.keys(), names=["simpl", "clusters", "ll", "opts"]
     )
@@ -513,9 +494,9 @@ def make_summaries(networks_dict, country="all"):
 
         Nyears = n.snapshot_weightings.objective.sum() / 8760.0
         costs = load_costs(
-            snakemake.input.tech_costs,
-            snakemake.config["costs"],
-            snakemake.config["electricity"],
+            inputs.tech_costs,
+            config["costs"],
+            config["electricity"],
             Nyears,
         )
         update_transmission_costs(n, costs, simple_hvdc_costs=False)
@@ -528,8 +509,7 @@ def make_summaries(networks_dict, country="all"):
     return dfs
 
 
-def to_csv(dfs):
-    dir = snakemake.output[0]
+def to_csv(dfs, dir):
     os.makedirs(dir, exist_ok=True)
     for key, df in dfs.items():
         df.to_csv(os.path.join(dir, f"{key}.csv"))
@@ -543,14 +523,21 @@ if __name__ == "__main__":
         snakemake = mock_snakemake(
             "make_summary",
             simpl="",
-            clusters="10",
+            clusters="5",
             ll="copt",
-            opts="Co2L-24H",
-            country="NG",
+            opts="Co2L-3H",
+            country="all",
         )
-        network_dir = os.path.join("..", "results", "networks")
+        network_dir = ".."
     else:
-        network_dir = os.path.join("results", "networks")
+        network_dir = "."
+
+    scenario_name = snakemake.config.get("run", {}).get("name", "")
+    if scenario_name:
+        network_dir = os.path.join(network_dir, "results", scenario_name, "networks")
+    else:
+        network_dir = os.path.join(network_dir, "results", "networks")
+
     configure_logging(snakemake)
 
     def expand_from_wildcard(key):
@@ -574,6 +561,11 @@ if __name__ == "__main__":
         for opts in expand_from_wildcard("opts")
     }
 
-    dfs = make_summaries(networks_dict, country=snakemake.wildcards.country)
+    dfs = make_summaries(
+        networks_dict,
+        snakemake.input,
+        snakemake.config,
+        country=snakemake.wildcards.country,
+    )
 
-    to_csv(dfs)
+    to_csv(dfs, snakemake.output[0])

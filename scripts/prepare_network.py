@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors, 2021 PyPSA-Africa Authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: MIT
-# coding: utf-8
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# -*- coding: utf-8 -*-
 """
 Prepare PyPSA network for solving according to :ref:`opts` and :ref:`ll`, such as
 
@@ -20,11 +21,12 @@ Relevant Settings
 .. code:: yaml
 
     costs:
-        emission_prices:
+        year:
+        version:
+        rooftop_share:
         USD2013_to_EUR2013:
-        discountrate:
-        marginal_cost:
-        capital_cost:
+        dicountrate:
+        emission_prices:
 
     electricity:
         co2limit:
@@ -37,7 +39,7 @@ Relevant Settings
 Inputs
 ------
 
-- ``data/costs.csv``: The database of cost assumptions for all included technologies for specific years from various sources; e.g. discount rate, lifetime, investment (CAPEX), fixed operation and maintenance (FOM), variable operation and maintenance (VOM), fuel costs, efficiency, carbon-dioxide intensity.
+- ``resources/costs.csv.``: The database of cost assumptions for all included technologies for specific years from various sources; e.g. discount rate, lifetime, investment (CAPEX), fixed operation and maintenance (FOM), variable operation and maintenance (VOM), fuel costs, efficiency, carbon-dioxide intensity.
 - ``networks/elec_s{simpl}_{clusters}.nc``: confer :ref:`cluster`
 
 Outputs
@@ -69,13 +71,7 @@ idx = pd.IndexSlice
 logger = logging.getLogger(__name__)
 
 
-def add_co2limit(n, Nyears=1.0, factor=None):
-
-    if factor is not None:
-        annual_emissions = factor * snakemake.config["electricity"]["co2base"]
-    else:
-        annual_emissions = snakemake.config["electricity"]["co2limit"]
-
+def add_co2limit(n, annual_emissions, Nyears=1.0):
     n.add(
         "GlobalConstraint",
         "CO2Limit",
@@ -86,7 +82,6 @@ def add_co2limit(n, Nyears=1.0, factor=None):
 
 
 def add_gaslimit(n, gaslimit, Nyears=1.0):
-
     sel = n.carriers.index.intersection(["OCGT", "CCGT", "CHP"])
     n.carriers.loc[sel, "gas_usage"] = 1.0
 
@@ -112,8 +107,7 @@ def add_emission_prices(n, emission_prices={"co2": 0.0}, exclude_co2=False):
     n.storage_units["marginal_cost"] += su_ep
 
 
-def set_line_s_max_pu(n):
-    s_max_pu = snakemake.config["lines"]["s_max_pu"]
+def set_line_s_max_pu(n, s_max_pu):
     n.lines["s_max_pu"] = s_max_pu
     logger.info(f"N-1 security margin of lines set to {s_max_pu}")
 
@@ -175,7 +169,7 @@ def average_every_nhours(n, offset):
     return m
 
 
-def apply_time_segmentation(n, segments):
+def apply_time_segmentation(n, segments, solver_name):
     logger.info(f"Aggregating time series to {segments} segments.")
     try:
         import tsam.timeseriesaggregation as tsam
@@ -194,8 +188,6 @@ def apply_time_segmentation(n, segments):
     inflow = n.storage_units_t.inflow / inflow_norm
 
     raw = pd.concat([p_max_pu, load, inflow], axis=1, sort=False)
-
-    solver_name = snakemake.config["solving"]["solver"]["name"]
 
     agg = tsam.TimeSeriesAggregation(
         raw,
@@ -269,8 +261,9 @@ if __name__ == "__main__":
         snakemake.config["electricity"],
         Nyears,
     )
+    s_max_pu = snakemake.config["lines"]["s_max_pu"]
 
-    set_line_s_max_pu(n)
+    set_line_s_max_pu(n, s_max_pu)
 
     for o in opts:
         m = re.match(r"^\d+h$", o, re.IGNORECASE)
@@ -293,7 +286,8 @@ if __name__ == "__main__":
                 add_co2limit(n, co2limit, Nyears)
                 logger.info("Setting CO2 limit according to wildcard value.")
             else:
-                add_co2limit(n, snakemake.config["electricity"]["co2limit"], Nyears)
+                co2limit = snakemake.config["electricity"]["co2limit"]
+                add_co2limit(n, co2limit, Nyears)
                 logger.info("Setting CO2 limit according to config value.")
             break
 

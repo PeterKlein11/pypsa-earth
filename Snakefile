@@ -1,25 +1,26 @@
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors, 2021-now PyPSA-Earth authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 import sys
 
 sys.path.append("./scripts")
 
 from os.path import normpath, exists, isdir
-from shutil import copyfile
+from shutil import copyfile, move
 
 from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
 
-from scripts.download_osm_data import create_country_list
-from scripts.add_electricity import get_load_paths_gegis
+from scripts._helpers import create_country_list
+from scripts.build_demand_profiles import get_load_paths_gegis
 from scripts.retrieve_databundle_light import datafiles_retrivedatabundle
+from pathlib import Path
 
 HTTP = HTTPRemoteProvider()
 
 if "config" not in globals() or not config:  # skip when used as sub-workflow
     if not exists("config.yaml"):
-        copyfile("config.default.yaml", "config.yaml")
+        copyfile("config.tutorial.yaml", "config.yaml")
 
     configfile: "config.yaml"
 
@@ -30,16 +31,22 @@ configfile: "configs/bundle_config.yaml"
 # convert country list according to the desired region
 config["countries"] = create_country_list(config["countries"])
 
-
 # create a list of iteration steps, required to solve the experimental design
 # each value is used as wildcard input e.g. solution_{unc}
 config["scenario"]["unc"] = [
     f"m{i}" for i in range(config["monte_carlo"]["options"]["samples"])
 ]
 
+run = config.get("run", {})
+RDIR = run["name"] + "/" if run.get("name") else ""
+CDIR = RDIR if not run.get("shared_cutouts") else ""
+
 load_data_paths = get_load_paths_gegis("data", config)
-COSTS = "data/costs.csv"
-ATLITE_NPROCESSES = config["atlite"].get("nprocesses", 20)
+if config["enable"].get("retrieve_cost_data", True):
+    COSTS = "resources/" + RDIR + "costs.csv"
+else:
+    COSTS = "data/costs.csv"
+ATLITE_NPROCESSES = config["atlite"].get("nprocesses", 4)
 
 
 wildcard_constraints:
@@ -50,12 +57,25 @@ wildcard_constraints:
     unc="[-+a-zA-Z0-9\.]*",
 
 
+if config["custom_rules"] is not []:
+    for rule in config["custom_rules"]:
+
+        include: rule
+
+
 rule clean:
     run:
         shell("snakemake -j 1 solve_all_networks --delete-all-output")
+        try:
+            shell("snakemake -j 1 solve_all_networks_monte --delete-all-output")
+        except:
+            pass
+        shell("snakemake -j 1 run_all_scenarios --delete-all-output")
 
 
 rule run_tests:
+    output:
+        touch("tests.done"),
     run:
         import os
 
@@ -63,17 +83,26 @@ rule run_tests:
         directory = "test/tmp"  # assign directory
         for filename in os.scandir(directory):  # iterate over files in that directory
             if filename.is_file():
-                print(filename.path)
-                shell("cp {filename.path} config.yaml")
-                shell("snakemake --cores all solve_all_networks --forceall")
-        # shell("rm -r config.yaml")
+                print(
+                    f"Running test: config name '{filename.name}'' and path name '{filename.path}'"
+                )
+                if "custom" in filename.name:
+                    shell("mkdir -p configs/scenarios")
+                    shell("cp {filename.path} configs/scenarios/config.custom.yaml")
+                    shell("snakemake --cores 1 run_all_scenarios --forceall")
+                if "monte" in filename.name:
+                    shell("cp {filename.path} config.yaml")
+                    shell("snakemake --cores all solve_all_networks_monte --forceall")
+                else:
+                    shell("cp {filename.path} config.yaml")
+                    shell("snakemake --cores all solve_all_networks --forceall")
         print("Tests are successful.")
 
 
 rule solve_all_networks:
     input:
         expand(
-            "results/networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
+            "results/" + RDIR + "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
             **config["scenario"]
         ),
 
@@ -81,7 +110,9 @@ rule solve_all_networks:
 rule plot_all_p_nom:
     input:
         expand(
-            "results/plots/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_p_nom.{ext}",
+            "results/"
+            + RDIR
+            + "plots/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_p_nom.{ext}",
             **config["scenario"],
             ext=["png", "pdf"]
         ),
@@ -90,7 +121,9 @@ rule plot_all_p_nom:
 rule make_all_summaries:
     input:
         expand(
-            "results/summaries/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}",
+            "results/"
+            + RDIR
+            + "summaries/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}",
             **config["scenario"],
             country=["all"] + config["countries"]
         ),
@@ -99,7 +132,9 @@ rule make_all_summaries:
 rule plot_all_summaries:
     input:
         expand(
-            "results/plots/summary_{summary}_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}.{ext}",
+            "results/"
+            + RDIR
+            + "plots/summary_{summary}_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}.{ext}",
             summary=["energy", "costs"],
             **config["scenario"],
             country=["all"] + config["countries"],
@@ -114,61 +149,71 @@ if config["enable"].get("retrieve_databundle", True):
             expand("{file}", file=datafiles_retrivedatabundle(config)),
             directory("data/landcover"),
         log:
-            "logs/retrieve_databundle.log",
+            "logs/" + RDIR + "retrieve_databundle.log",
+        benchmark:
+            "benchmarks/" + RDIR + "retrieve_databundle_light"
         script:
             "scripts/retrieve_databundle_light.py"
 
 
 # if config["enable"].get("download_osm_data", True):
 
-#     rule download_osm_data:
-#         output:
-#             cables="resources/osm/raw/africa_all_raw_cables.geojson",
-#             generators="resources/osm/raw/africa_all_raw_generators.geojson",
-#             generators_csv="resources/osm/raw/africa_all_raw_generators.csv",
-#             lines="resources/osm/raw/africa_all_raw_lines.geojson",
-#             substations="resources/osm/raw/africa_all_raw_substations.geojson",
-#         log:
-#             "logs/download_osm_data.log",
-#         script:
-#             "scripts/download_osm_data.py"
+    rule download_osm_data:
+        output:
+            cables="resources/" + RDIR + "osm/raw/all_raw_cables.geojson",
+            generators="resources/" + RDIR + "osm/raw/all_raw_generators.geojson",
+            generators_csv="resources/" + RDIR + "osm/raw/all_raw_generators.csv",
+            lines="resources/" + RDIR + "osm/raw/all_raw_lines.geojson",
+            substations="resources/" + RDIR + "osm/raw/all_raw_substations.geojson",
+        log:
+            "logs/" + RDIR + "download_osm_data.log",
+        benchmark:
+            "benchmarks/" + RDIR + "download_osm_data"
+        script:
+            "scripts/download_osm_data.py"
 
 
-# rule clean_osm_data:
-#     input:
-#         cables="resources/osm/raw/africa_all_raw_cables.geojson",
-#         generators="resources/osm/raw/africa_all_raw_generators.geojson",
-#         lines="resources/osm/raw/africa_all_raw_lines.geojson",
-#         substations="resources/osm/raw/africa_all_raw_substations.geojson",
-#         country_shapes="resources/shapes/country_shapes.geojson",
-#         offshore_shapes="resources/shapes/offshore_shapes.geojson",
-#         africa_shape="resources/shapes/africa_shape.geojson",
-#     output:
-#         generators="resources/osm/clean/africa_all_generators.geojson",
-#         generators_csv="resources/osm/clean/africa_all_generators.csv",
-#         lines="resources/osm/clean/africa_all_lines.geojson",
-#         substations="resources/osm/clean/africa_all_substations.geojson",
-#     log:
-#         "logs/clean_osm_data.log",
-#     script:
-#         "scripts/clean_osm_data.py"
+rule clean_osm_data:
+    input:
+        cables="resources/" + RDIR + "osm/raw/all_raw_cables.geojson",
+        generators="resources/" + RDIR + "osm/raw/all_raw_generators.geojson",
+        lines="resources/" + RDIR + "osm/raw/all_raw_lines.geojson",
+        substations="resources/" + RDIR + "osm/raw/all_raw_substations.geojson",
+        country_shapes="resources/" + RDIR + "shapes/country_shapes.geojson",
+        offshore_shapes="resources/" + RDIR + "shapes/offshore_shapes.geojson",
+        africa_shape="resources/" + RDIR + "shapes/africa_shape.geojson",
+    output:
+        generators="resources/" + RDIR + "osm/clean/all_clean_generators.geojson",
+        generators_csv="resources/" + RDIR + "osm/clean/all_clean_generators.csv",
+        lines="resources/" + RDIR + "osm/clean/all_clean_lines.geojson",
+        substations="resources/" + RDIR + "osm/clean/all_clean_substations.geojson",
+    log:
+        "logs/" + RDIR + "clean_osm_data.log",
+    benchmark:
+        "benchmarks/" + RDIR + "clean_osm_data"
+    script:
+        "scripts/clean_osm_data.py"
 
 
-# rule build_osm_network:
-#     input:
-#         generators="resources/osm/clean/africa_all_generators.geojson",
-#         lines="resources/osm/clean/africa_all_lines.geojson",
-#         substations="resources/osm/clean/africa_all_substations.geojson",
-#         country_shapes="resources/shapes/country_shapes.geojson",
-#     output:
-#         lines="resources/base_network/africa_all_lines_build_network.csv",
-#         converters="resources/base_network/africa_all_converters_build_network.csv",
-#         transformers="resources/base_network/africa_all_transformers_build_network.csv",
-#         substations="resources/base_network/africa_all_buses_build_network.csv",
-#     log:
-#         "logs/build_osm_network.log",
-#     script:
-#         "scripts/build_osm_network.py"
+rule build_osm_network:
+    input:
+        generators="resources/" + RDIR + "osm/clean/all_clean_generators.geojson",
+        lines="resources/" + RDIR + "osm/clean/all_clean_lines.geojson",
+        substations="resources/" + RDIR + "osm/clean/all_clean_substations.geojson",
+        country_shapes="resources/" + RDIR + "shapes/country_shapes.geojson",
+    output:
+        lines="resources/" + RDIR + "base_network/all_lines_build_network.csv",
+        converters="resources/" + RDIR + "base_network/all_converters_build_network.csv",
+        transformers="resources/"
+        + RDIR
+        + "base_network/all_transformers_build_network.csv",
+        substations="resources/" + RDIR + "base_network/all_buses_build_network.csv",
+    log:
+        "logs/" + RDIR + "build_osm_network.log",
+    benchmark:
+        "benchmarks/" + RDIR + "build_osm_network"
+    script:
+        "scripts/build_osm_network.py"
 
 
 rule build_shapes:
@@ -180,12 +225,14 @@ rule build_shapes:
         # nuts3gdp='data/bundle/nama_10r_3gdp.tsv.gz',
         eez="data/eez/eez_v11.gpkg",
     output:
-        country_shapes="resources/shapes/country_shapes.geojson",
-        offshore_shapes="resources/shapes/offshore_shapes.geojson",
-        africa_shape="resources/shapes/africa_shape.geojson",
-        gadm_shapes="resources/shapes/gadm_shapes.geojson",
+        country_shapes="resources/" + RDIR + "shapes/country_shapes.geojson",
+        offshore_shapes="resources/" + RDIR + "shapes/offshore_shapes.geojson",
+        africa_shape="resources/" + RDIR + "shapes/africa_shape.geojson",
+        gadm_shapes="resources/" + RDIR + "shapes/gadm_shapes.geojson",
     log:
-        "logs/build_shapes.log",
+        "logs/" + RDIR + "build_shapes.log",
+    benchmark:
+        "benchmarks/" + RDIR + "build_shapes"
     threads: 1
     resources:
         mem_mb=500,
@@ -195,29 +242,22 @@ rule build_shapes:
 
 rule base_network:
     input:
-        osm_buses="resources/base_network/africa_all_buses_build_network.csv",
-        osm_lines="resources/base_network/africa_all_lines_build_network.csv",
-        osm_converters="resources/base_network/africa_all_converters_build_network.csv",
-        osm_transformers="resources/base_network/africa_all_transformers_build_network.csv",
-        country_shapes="resources/shapes/country_shapes.geojson",
-        offshore_shapes="resources/shapes/offshore_shapes.geojson",
-        # osm_buses='data/osm/africa_all_buses_clean.csv',
-        # osm_lines='data/osm/africa_all_lines_clean.csv',
-        # eg_buses='data/entsoegridkit/buses.csv',
-        # eg_lines='data/entsoegridkit/lines.csv',
-        # eg_links='data/entsoegridkit/links.csv',
-        # eg_converters='data/entsoegridkit/converters.csv',
-        # eg_transformers='data/entsoegridkit/transformers.csv',
-        # parameter_corrections='data/parameter_corrections.yaml',
-        # links_p_nom='data/links_p_nom.csv',
-        # links_tyndp='data/links_tyndp.csv',
-        # africa_shape='resources/africa_shape.geojson'
+        osm_buses="resources/" + RDIR + "base_network/all_buses_build_network.csv",
+        osm_lines="resources/" + RDIR + "base_network/all_lines_build_network.csv",
+        osm_converters="resources/"
+        + RDIR
+        + "base_network/all_converters_build_network.csv",
+        osm_transformers="resources/"
+        + RDIR
+        + "base_network/all_transformers_build_network.csv",
+        country_shapes="resources/" + RDIR + "shapes/country_shapes.geojson",
+        offshore_shapes="resources/" + RDIR + "shapes/offshore_shapes.geojson",
     output:
-        "networks/base.nc",
+        "networks/" + RDIR + "base.nc",
     log:
-        "logs/base_network.log",
+        "logs/" + RDIR + "base_network.log",
     benchmark:
-        "benchmarks/base_network"
+        "benchmarks/" + RDIR + "base_network"
     threads: 1
     resources:
         mem_mb=500,
@@ -227,19 +267,21 @@ rule base_network:
 
 rule build_bus_regions:
     input:
-        country_shapes="resources/shapes/country_shapes.geojson",
-        offshore_shapes="resources/shapes/offshore_shapes.geojson",
-        base_network="networks/base.nc",
-        #gadm_shapes="resources/shapes/MAR2.geojson",
+        country_shapes="resources/" + RDIR + "shapes/country_shapes.geojson",
+        offshore_shapes="resources/" + RDIR + "shapes/offshore_shapes.geojson",
+        base_network="networks/" + RDIR + "base.nc",
+        #gadm_shapes="resources/" + RDIR + "shapes/MAR2.geojson",
         #using this line instead of the following will test updated gadm shapes for MA.
-        #To use: downlaod file from the google drive and place it in resources/shapes/
+        #To use: downlaod file from the google drive and place it in resources/" + RDIR + "shapes/
         #Link: https://drive.google.com/drive/u/1/folders/1dkW1wKBWvSY4i-XEuQFFBj242p0VdUlM
-        gadm_shapes="resources/shapes/gadm_shapes.geojson",
+        gadm_shapes="resources/" + RDIR + "shapes/gadm_shapes.geojson",
     output:
-        regions_onshore="resources/bus_regions/regions_onshore.geojson",
-        regions_offshore="resources/bus_regions/regions_offshore.geojson",
+        regions_onshore="resources/" + RDIR + "bus_regions/regions_onshore.geojson",
+        regions_offshore="resources/" + RDIR + "bus_regions/regions_offshore.geojson",
     log:
-        "logs/build_bus_regions.log",
+        "logs/" + RDIR + "build_bus_regions.log",
+    benchmark:
+        "benchmarks/" + RDIR + "build_bus_regions"
     threads: 1
     resources:
         mem_mb=1000,
@@ -251,14 +293,14 @@ if config["enable"].get("build_cutout", False):
 
     rule build_cutout:
         input:
-            onshore_shapes="resources/shapes/country_shapes.geojson",
-            offshore_shapes="resources/shapes/offshore_shapes.geojson",
+            onshore_shapes="resources/" + RDIR + "shapes/country_shapes.geojson",
+            offshore_shapes="resources/" + RDIR + "shapes/offshore_shapes.geojson",
         output:
-            "cutouts/{cutout}.nc",
+            "cutouts/" + CDIR + "{cutout}.nc",
         log:
-            "logs/build_cutout/{cutout}.log",
+            "logs/" + RDIR + "build_cutout/{cutout}.log",
         benchmark:
-            "benchmarks/build_cutout_{cutout}"
+            "benchmarks/" + RDIR + "build_cutout_{cutout}"
         threads: ATLITE_NPROCESSES
         resources:
             mem_mb=ATLITE_NPROCESSES * 1000,
@@ -271,11 +313,13 @@ if config["enable"].get("build_natura_raster", False):
     rule build_natura_raster:
         input:
             shapefiles_land="data/landcover",
-            cutouts=expand("cutouts/{cutouts}.nc", **config["atlite"]),
+            cutouts=expand("cutouts/" + CDIR + "{cutouts}.nc", **config["atlite"]),
         output:
-            "resources/natura.tiff",
+            "resources/" + RDIR + "natura.tiff",
         log:
-            "logs/build_natura_raster.log",
+            "logs/" + RDIR + "build_natura_raster.log",
+        benchmark:
+            "benchmarks/" + RDIR + "build_natura_raster"
         script:
             "scripts/build_natura_raster.py"
 
@@ -286,38 +330,79 @@ if not config["enable"].get("build_natura_raster", False):
         input:
             "data/natura.tiff",
         output:
-            "resources/natura.tiff",
+            "resources/" + RDIR + "natura.tiff",
         run:
             import shutil
 
             shutil.copyfile(input[0], output[0])
 
 
+if config["enable"].get("retrieve_cost_data", True):
+
+    rule retrieve_cost_data:
+        input:
+            HTTP.remote(
+                f"raw.githubusercontent.com/PyPSA/technology-data/{config['costs']['version']}/outputs/costs_{config['costs']['year']}.csv",
+                keep_local=True,
+            ),
+        output:
+            COSTS,
+        log:
+            "logs/" + RDIR + "retrieve_cost_data.log",
+        resources:
+            mem_mb=5000,
+        run:
+            move(input[0], output[0])
+
+
+rule build_demand_profiles:
+    input:
+        base_network="networks/" + RDIR + "base.nc",
+        regions="resources/" + RDIR + "bus_regions/regions_onshore.geojson",
+        load=load_data_paths,
+        #gadm_shapes="resources/" + RDIR + "shapes/MAR2.geojson",
+        #using this line instead of the following will test updated gadm shapes for MA.
+        #To use: downlaod file from the google drive and place it in resources/" + RDIR + "shapes/
+        #Link: https://drive.google.com/drive/u/1/folders/1dkW1wKBWvSY4i-XEuQFFBj242p0VdUlM
+        gadm_shapes="resources/" + RDIR + "shapes/gadm_shapes.geojson",
+    output:
+        "resources/" + RDIR + "demand_profiles.csv",
+    log:
+        "logs/" + RDIR + "build_demand_profiles.log",
+    benchmark:
+        "benchmarks/" + RDIR + "build_demand_profiles"
+    threads: 1
+    resources:
+        mem_mb=3000,
+    script:
+        "scripts/build_demand_profiles.py"
+
+
 rule build_renewable_profiles:
     input:
-        base_network="networks/base.nc",
-        natura="resources/natura.tiff",
+        natura="resources/" + RDIR + "natura.tiff",
         copernicus="data/copernicus/PROBAV_LC100_global_v3.0.1_2019-nrt_Discrete-Classification-map_EPSG-4326.tif",
         gebco="data/gebco/GEBCO_2021_TID.nc",
-        country_shapes="resources/shapes/country_shapes.geojson",
-        offshore_shapes="resources/shapes/offshore_shapes.geojson",
+        country_shapes="resources/" + RDIR + "shapes/country_shapes.geojson",
+        offshore_shapes="resources/" + RDIR + "shapes/offshore_shapes.geojson",
         hydro_capacities="data/hydro_capacities.csv",
         eia_hydro_generation="data/eia_hydro_annual_generation.csv",
-        powerplants="resources/powerplants.csv",
+        powerplants="resources/" + RDIR + "powerplants.csv",
         regions=lambda w: (
-            "resources/bus_regions/regions_onshore.geojson"
+            "resources/" + RDIR + "bus_regions/regions_onshore.geojson"
             if w.technology in ("onwind", "solar", "hydro")
-            else "resources/bus_regions/regions_offshore.geojson"
+            else "resources/" + RDIR + "bus_regions/regions_offshore.geojson"
         ),
         cutout=lambda w: "cutouts/"
+        + CDIR
         + config["renewable"][w.technology]["cutout"]
         + ".nc",
     output:
-        profile="resources/renewable_profiles/profile_{technology}.nc",
+        profile="resources/" + RDIR + "renewable_profiles/profile_{technology}.nc",
     log:
-        "logs/build_renewable_profile_{technology}.log",
+        "logs/" + RDIR + "build_renewable_profile_{technology}.log",
     benchmark:
-        "benchmarks/build_renewable_profiles_{technology}"
+        "benchmarks/" + RDIR + "build_renewable_profiles_{technology}"
     threads: ATLITE_NPROCESSES
     resources:
         mem_mb=ATLITE_NPROCESSES * 5000,
@@ -327,20 +412,22 @@ rule build_renewable_profiles:
 
 rule build_powerplants:
     input:
-        base_network="networks/base.nc",
+        base_network="networks/" + RDIR + "base.nc",
         pm_config="configs/powerplantmatching_config.yaml",
         custom_powerplants="data/custom_powerplants.csv",
-        osm_powerplants="resources/osm/clean/africa_all_generators.csv",
-        #gadm_shapes="resources/shapes/MAR2.geojson",
+        osm_powerplants="resources/" + RDIR + "osm/clean/all_clean_generators.csv",
+        #gadm_shapes="resources/" + RDIR + "shapes/MAR2.geojson",
         #using this line instead of the following will test updated gadm shapes for MA.
-        #To use: downlaod file from the google drive and place it in resources/shapes/
+        #To use: downlaod file from the google drive and place it in resources/" + RDIR + "shapes/
         #Link: https://drive.google.com/drive/u/1/folders/1dkW1wKBWvSY4i-XEuQFFBj242p0VdUlM
-        gadm_shapes="resources/shapes/gadm_shapes.geojson",
+        gadm_shapes="resources/" + RDIR + "shapes/gadm_shapes.geojson",
     output:
-        powerplants="resources/powerplants.csv",
-        powerplants_osm2pm="resources/powerplants_osm2pm.csv",
+        powerplants="resources/" + RDIR + "powerplants.csv",
+        powerplants_osm2pm="resources/" + RDIR + "powerplants_osm2pm.csv",
     log:
-        "logs/build_powerplants.log",
+        "logs/" + RDIR + "build_powerplants.log",
+    benchmark:
+        "benchmarks/" + RDIR + "build_powerplants"
     threads: 1
     resources:
         mem_mb=500,
@@ -351,7 +438,9 @@ rule build_powerplants:
 rule add_electricity:
     input:
         **{
-            f"profile_{tech}": f"resources/renewable_profiles/profile_{tech}.nc"
+            f"profile_{tech}": "resources/"
+            + RDIR
+            + f"renewable_profiles/profile_{tech}.nc"
             for tech in config["renewable"]
             if tech in config["electricity"]["renewable_carriers"]
         },
@@ -361,23 +450,22 @@ rule add_electricity:
             for attr, fn in d.items()
             if str(fn).startswith("data/")
         },
-        base_network="networks/base.nc",
+        base_network="networks/" + RDIR + "base.nc",
         tech_costs=COSTS,
-        regions="resources/bus_regions/regions_onshore.geojson",
-        powerplants="resources/powerplants.csv",
-        load=load_data_paths,
-        #gadm_shapes="resources/shapes/MAR2.geojson", 
+        powerplants="resources/" + RDIR + "powerplants.csv",
+        #gadm_shapes="resources/" + RDIR + "shapes/MAR2.geojson",
         #using this line instead of the following will test updated gadm shapes for MA.
-        #To use: downlaod file from the google drive and place it in resources/shapes/
+        #To use: downlaod file from the google drive and place it in resources/" + RDIR + "shapes/
         #Link: https://drive.google.com/drive/u/1/folders/1dkW1wKBWvSY4i-XEuQFFBj242p0VdUlM
-        gadm_shapes="resources/shapes/gadm_shapes.geojson",
+        gadm_shapes="resources/" + RDIR + "shapes/gadm_shapes.geojson",
         hydro_capacities="data/hydro_capacities.csv",
+        demand_profiles="resources/" + RDIR + "demand_profiles.csv",
     output:
-        "networks/elec.nc",
+        "networks/" + RDIR + "elec.nc",
     log:
-        "logs/add_electricity.log",
+        "logs/" + RDIR + "add_electricity.log",
     benchmark:
-        "benchmarks/add_electricity"
+        "benchmarks/" + RDIR + "add_electricity"
     threads: 1
     resources:
         mem_mb=3000,
@@ -387,20 +475,26 @@ rule add_electricity:
 
 rule simplify_network:
     input:
-        network="networks/elec.nc",
+        network="networks/" + RDIR + "elec.nc",
         tech_costs=COSTS,
-        regions_onshore="resources/bus_regions/regions_onshore.geojson",
-        regions_offshore="resources/bus_regions/regions_offshore.geojson",
+        regions_onshore="resources/" + RDIR + "bus_regions/regions_onshore.geojson",
+        regions_offshore="resources/" + RDIR + "bus_regions/regions_offshore.geojson",
     output:
-        network="networks/elec_s{simpl}.nc",
-        regions_onshore="resources/bus_regions/regions_onshore_elec_s{simpl}.geojson",
-        regions_offshore="resources/bus_regions/regions_offshore_elec_s{simpl}.geojson",
-        busmap="resources/bus_regions/busmap_elec_s{simpl}.csv",
-        connection_costs="resources/bus_regions/connection_costs_s{simpl}.csv",
+        network="networks/" + RDIR + "elec_s{simpl}.nc",
+        regions_onshore="resources/"
+        + RDIR
+        + "bus_regions/regions_onshore_elec_s{simpl}.geojson",
+        regions_offshore="resources/"
+        + RDIR
+        + "bus_regions/regions_offshore_elec_s{simpl}.geojson",
+        busmap="resources/" + RDIR + "bus_regions/busmap_elec_s{simpl}.csv",
+        connection_costs="resources/"
+        + RDIR
+        + "bus_regions/connection_costs_s{simpl}.csv",
     log:
-        "logs/simplify_network/elec_s{simpl}.log",
+        "logs/" + RDIR + "simplify_network/elec_s{simpl}.log",
     benchmark:
-        "benchmarks/simplify_network/elec_s{simpl}"
+        "benchmarks/" + RDIR + "simplify_network/elec_s{simpl}"
     threads: 1
     resources:
         mem_mb=4000,
@@ -412,29 +506,41 @@ if config["augmented_line_connection"].get("add_to_snakefile", False) == True:
 
     rule cluster_network:
         input:
-            network="networks/elec_s{simpl}.nc",
-            country_shapes="resources/shapes/country_shapes.geojson",
-            regions_onshore="resources/bus_regions/regions_onshore_elec_s{simpl}.geojson",
-            regions_offshore="resources/bus_regions/regions_offshore_elec_s{simpl}.geojson",
-            #gadm_shapes="resources/shapes/MAR2.geojson",
+            network="networks/" + RDIR + "elec_s{simpl}.nc",
+            country_shapes="resources/" + RDIR + "shapes/country_shapes.geojson",
+            regions_onshore="resources/"
+            + RDIR
+            + "bus_regions/regions_onshore_elec_s{simpl}.geojson",
+            regions_offshore="resources/"
+            + RDIR
+            + "bus_regions/regions_offshore_elec_s{simpl}.geojson",
+            #gadm_shapes="resources/" + RDIR + "shapes/MAR2.geojson",
             #using this line instead of the following will test updated gadm shapes for MA.
-            #To use: downlaod file from the google drive and place it in resources/shapes/
+            #To use: downlaod file from the google drive and place it in resources/" + RDIR + "shapes/
             #Link: https://drive.google.com/drive/u/1/folders/1dkW1wKBWvSY4i-XEuQFFBj242p0VdUlM
-            gadm_shapes="resources/shapes/gadm_shapes.geojson",
-            # busmap=ancient('resources/bus_regions/busmap_elec_s{simpl}.csv'),
+            gadm_shapes="resources/" + RDIR + "shapes/gadm_shapes.geojson",
+            # busmap=ancient('resources/" + RDIR + "bus_regions/busmap_elec_s{simpl}.csv'),
             # custom_busmap=("data/custom_busmap_elec_s{simpl}_{clusters}.csv"
             #                if config["enable"].get("custom_busmap", False) else []),
             tech_costs=COSTS,
         output:
-            network="networks/elec_s{simpl}_{clusters}_pre_augmentation.nc",
-            regions_onshore="resources/bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson",
-            regions_offshore="resources/bus_regions/regions_offshore_elec_s{simpl}_{clusters}.geojson",
-            busmap="resources/bus_regions/busmap_elec_s{simpl}_{clusters}.csv",
-            linemap="resources/bus_regions/linemap_elec_s{simpl}_{clusters}.csv",
+            network="networks/" + RDIR + "elec_s{simpl}_{clusters}_pre_augmentation.nc",
+            regions_onshore="resources/"
+            + RDIR
+            + "bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson",
+            regions_offshore="resources/"
+            + RDIR
+            + "bus_regions/regions_offshore_elec_s{simpl}_{clusters}.geojson",
+            busmap="resources/"
+            + RDIR
+            + "bus_regions/busmap_elec_s{simpl}_{clusters}.csv",
+            linemap="resources/"
+            + RDIR
+            + "bus_regions/linemap_elec_s{simpl}_{clusters}.csv",
         log:
-            "logs/cluster_network/elec_s{simpl}_{clusters}.log",
+            "logs/" + RDIR + "cluster_network/elec_s{simpl}_{clusters}.log",
         benchmark:
-            "benchmarks/cluster_network/elec_s{simpl}_{clusters}"
+            "benchmarks/" + RDIR + "cluster_network/elec_s{simpl}_{clusters}"
         threads: 1
         resources:
             mem_mb=3000,
@@ -444,15 +550,19 @@ if config["augmented_line_connection"].get("add_to_snakefile", False) == True:
     rule augmented_line_connections:
         input:
             tech_costs=COSTS,
-            network="networks/elec_s{simpl}_{clusters}_pre_augmentation.nc",
-            regions_onshore="resources/bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson",
-            regions_offshore="resources/bus_regions/regions_offshore_elec_s{simpl}_{clusters}.geojson",
+            network="networks/" + RDIR + "elec_s{simpl}_{clusters}_pre_augmentation.nc",
+            regions_onshore="resources/"
+            + RDIR
+            + "bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson",
+            regions_offshore="resources/"
+            + RDIR
+            + "bus_regions/regions_offshore_elec_s{simpl}_{clusters}.geojson",
         output:
-            network="networks/elec_s{simpl}_{clusters}.nc",
+            network="networks/" + RDIR + "elec_s{simpl}_{clusters}.nc",
         log:
-            "logs/augmented_line_connections/elec_s{simpl}_{clusters}.log",
+            "logs/" + RDIR + "augmented_line_connections/elec_s{simpl}_{clusters}.log",
         benchmark:
-            "benchmarks/augmented_line_connections/elec_s{simpl}_{clusters}"
+            "benchmarks/" + RDIR + "augmented_line_connections/elec_s{simpl}_{clusters}"
         threads: 1
         resources:
             mem_mb=3000,
@@ -464,29 +574,41 @@ if config["augmented_line_connection"].get("add_to_snakefile", False) == False:
 
     rule cluster_network:
         input:
-            network="networks/elec_s{simpl}.nc",
-            country_shapes="resources/shapes/country_shapes.geojson",
-            regions_onshore="resources/bus_regions/regions_onshore_elec_s{simpl}.geojson",
-            regions_offshore="resources/bus_regions/regions_offshore_elec_s{simpl}.geojson",
-            #gadm_shapes="resources/shapes/MAR2.geojson",
+            network="networks/" + RDIR + "elec_s{simpl}.nc",
+            country_shapes="resources/" + RDIR + "shapes/country_shapes.geojson",
+            regions_onshore="resources/"
+            + RDIR
+            + "bus_regions/regions_onshore_elec_s{simpl}.geojson",
+            regions_offshore="resources/"
+            + RDIR
+            + "bus_regions/regions_offshore_elec_s{simpl}.geojson",
+            #gadm_shapes="resources/" + RDIR + "shapes/MAR2.geojson",
             #using this line instead of the following will test updated gadm shapes for MA.
-            #To use: downlaod file from the google drive and place it in resources/shapes/
+            #To use: downlaod file from the google drive and place it in resources/" + RDIR + "shapes/
             #Link: https://drive.google.com/drive/u/1/folders/1dkW1wKBWvSY4i-XEuQFFBj242p0VdUlM
-            gadm_shapes="resources/shapes/gadm_shapes.geojson",
-            # busmap=ancient('resources/bus_regions/busmap_elec_s{simpl}.csv'),
+            gadm_shapes="resources/" + RDIR + "shapes/gadm_shapes.geojson",
+            # busmap=ancient('resources/" + RDIR + "bus_regions/busmap_elec_s{simpl}.csv'),
             # custom_busmap=("data/custom_busmap_elec_s{simpl}_{clusters}.csv"
             #                if config["enable"].get("custom_busmap", False) else []),
             tech_costs=COSTS,
         output:
-            network="networks/elec_s{simpl}_{clusters}.nc",
-            regions_onshore="resources/bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson",
-            regions_offshore="resources/bus_regions/regions_offshore_elec_s{simpl}_{clusters}.geojson",
-            busmap="resources/bus_regions/busmap_elec_s{simpl}_{clusters}.csv",
-            linemap="resources/bus_regions/linemap_elec_s{simpl}_{clusters}.csv",
+            network="networks/" + RDIR + "elec_s{simpl}_{clusters}.nc",
+            regions_onshore="resources/"
+            + RDIR
+            + "bus_regions/regions_onshore_elec_s{simpl}_{clusters}.geojson",
+            regions_offshore="resources/"
+            + RDIR
+            + "bus_regions/regions_offshore_elec_s{simpl}_{clusters}.geojson",
+            busmap="resources/"
+            + RDIR
+            + "bus_regions/busmap_elec_s{simpl}_{clusters}.csv",
+            linemap="resources/"
+            + RDIR
+            + "bus_regions/linemap_elec_s{simpl}_{clusters}.csv",
         log:
-            "logs/cluster_network/elec_s{simpl}_{clusters}.log",
+            "logs/" + RDIR + "cluster_network/elec_s{simpl}_{clusters}.log",
         benchmark:
-            "benchmarks/cluster_network/elec_s{simpl}_{clusters}"
+            "benchmarks/" + RDIR + "cluster_network/elec_s{simpl}_{clusters}"
         threads: 1
         resources:
             mem_mb=3000,
@@ -496,14 +618,14 @@ if config["augmented_line_connection"].get("add_to_snakefile", False) == False:
 
 rule add_extra_components:
     input:
-        network="networks/elec_s{simpl}_{clusters}.nc",
+        network="networks/" + RDIR + "elec_s{simpl}_{clusters}.nc",
         tech_costs=COSTS,
     output:
-        "networks/elec_s{simpl}_{clusters}_ec.nc",
+        "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec.nc",
     log:
-        "logs/add_extra_components/elec_s{simpl}_{clusters}.log",
+        "logs/" + RDIR + "add_extra_components/elec_s{simpl}_{clusters}.log",
     benchmark:
-        "benchmarks/add_extra_components/elec_s{simpl}_{clusters}_ec"
+        "benchmarks/" + RDIR + "add_extra_components/elec_s{simpl}_{clusters}_ec"
     threads: 1
     resources:
         mem_mb=3000,
@@ -513,14 +635,18 @@ rule add_extra_components:
 
 rule prepare_network:
     input:
-        "networks/elec_s{simpl}_{clusters}_ec.nc",
+        "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec.nc",
         tech_costs=COSTS,
     output:
-        "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
+        "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
     log:
-        "logs/prepare_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.log",
+        "logs/" + RDIR + "prepare_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.log",
     benchmark:
-        "benchmarks/prepare_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}"
+        (
+            "benchmarks/"
+            + RDIR
+            + "prepare_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}"
+        )
     threads: 1
     resources:
         mem_mb=4000,
@@ -550,17 +676,27 @@ if config["monte_carlo"]["options"].get("add_to_snakefile", False) == False:
 
     rule solve_network:
         input:
-            "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
+            "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
         output:
-            "results/networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
+            "results/" + RDIR + "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
         log:
             solver=normpath(
-                "logs/solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_solver.log"
+                "logs/"
+                + RDIR
+                + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_solver.log"
             ),
-            python="logs/solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_python.log",
-            memory="logs/solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_memory.log",
+            python="logs/"
+            + RDIR
+            + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_python.log",
+            memory="logs/"
+            + RDIR
+            + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_memory.log",
         benchmark:
-            "benchmarks/solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}"
+            (
+                "benchmarks/"
+                + RDIR
+                + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}"
+            )
         threads: 20
         resources:
             mem=memory,
@@ -574,13 +710,19 @@ if config["monte_carlo"]["options"].get("add_to_snakefile", False) == True:
 
     rule monte_carlo:
         input:
-            "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
+            "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
         output:
-            "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
+            "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
         log:
-            "logs/prepare_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.log",
+            "logs/"
+            + RDIR
+            + "prepare_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.log",
         benchmark:
-            "benchmarks/prepare_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}"
+            (
+                "benchmarks/"
+                + RDIR
+                + "prepare_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}"
+            )
         threads: 1
         resources:
             mem_mb=4000,
@@ -590,23 +732,37 @@ if config["monte_carlo"]["options"].get("add_to_snakefile", False) == True:
     rule solve_monte:
         input:
             expand(
-                "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
+                "networks/"
+                + RDIR
+                + "elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
                 **config["scenario"]
             ),
 
     rule solve_network:
         input:
-            "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
+            "networks/" + RDIR + "elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
         output:
-            "results/networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
+            "results/"
+            + RDIR
+            + "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
         log:
             solver=normpath(
-                "logs/solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}_solver.log"
+                "logs/"
+                + RDIR
+                + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}_solver.log"
             ),
-            python="logs/solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}_python.log",
-            memory="logs/solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}_memory.log",
+            python="logs/"
+            + RDIR
+            + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}_python.log",
+            memory="logs/"
+            + RDIR
+            + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}_memory.log",
         benchmark:
-            "benchmarks/solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}"
+            (
+                "benchmarks/"
+                + RDIR
+                + "solve_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}"
+            )
         threads: 20
         resources:
             mem_mb=memory,
@@ -618,7 +774,9 @@ if config["monte_carlo"]["options"].get("add_to_snakefile", False) == True:
     rule solve_all_networks_monte:
         input:
             expand(
-                "results/networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
+                "results/"
+                + RDIR
+                + "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{unc}.nc",
                 **config["scenario"]
             ),
 
@@ -632,7 +790,7 @@ def input_make_summary(w):
     else:
         ll = w.ll
     return [COSTS] + expand(
-        "results/networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
+        "results/" + RDIR + "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
         ll=ll,
         **{
             k: config["scenario"][k] if getattr(w, k) == "all" else getattr(w, k)
@@ -647,35 +805,53 @@ rule make_summary:
         tech_costs=COSTS,
     output:
         directory(
-            "results/summaries/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}"
+            "results/"
+            + RDIR
+            + "summaries/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}"
         ),
     log:
-        "logs/make_summary/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}.log",
+        "logs/"
+        + RDIR
+        + "make_summary/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}.log",
     script:
         "scripts/make_summary.py"
 
 
 rule plot_summary:
     input:
-        "results/summaries/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}",
+        "results/"
+        + RDIR
+        + "summaries/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}",
     output:
-        "results/plots/summary_{summary}_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}.{ext}",
+        "results/"
+        + RDIR
+        + "plots/summary_{summary}_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}.{ext}",
     log:
-        "logs/plot_summary/{summary}_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}_{ext}.log",
+        "logs/"
+        + RDIR
+        + "plot_summary/{summary}_elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{country}_{ext}.log",
     script:
         "scripts/plot_summary.py"
 
 
 rule plot_network:
     input:
-        network="results/networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
-        africa_shape="resources/shapes/africa_shape.geojson",
+        network="results/"
+        + RDIR
+        + "networks/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}.nc",
+        africa_shape="resources/" + RDIR + "shapes/africa_shape.geojson",
         tech_costs=COSTS,
     output:
-        only_map="results/plots/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{attr}.{ext}",
-        ext="results/plots/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{attr}_ext.{ext}",
+        only_map="results/"
+        + RDIR
+        + "plots/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{attr}.{ext}",
+        ext="results/"
+        + RDIR
+        + "plots/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{attr}_ext.{ext}",
     log:
-        "logs/plot_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{attr}_{ext}.log",
+        "logs/"
+        + RDIR
+        + "plot_network/elec_s{simpl}_{clusters}_ec_l{ll}_{opts}_{attr}_{ext}.log",
     script:
         "scripts/plot_network.py"
 
@@ -698,3 +874,57 @@ rule build_test_configs:
         ],
     script:
         "scripts/build_test_configs.py"
+
+
+rule make_statistics:
+    output:
+        stats="results/" + RDIR + "stats.csv",
+    threads: 1
+    script:
+        "scripts/make_statistics.py"
+
+
+rule run_scenario:
+    input:
+        diff_config="configs/scenarios/config.{scenario_name}.yaml",
+    output:
+        touchfile=touch("results/{scenario_name}/scenario.done"),
+        copyconfig="results/{scenario_name}/config.yaml",
+    threads: 1
+    resources:
+        mem_mb=5000,
+    run:
+        from scripts.build_test_configs import create_test_config
+        import yaml
+
+        # get base configuration file from diff config
+        with open(input.diff_config) as f:
+            base_config_path = (
+                yaml.full_load(f)
+                .get("run", {})
+                .get("base_config", "config.tutorial.yaml")
+            )
+
+            # Ensure the scenario name matches the name of the configuration
+        create_test_config(
+            input.diff_config,
+            {"run": {"name": wildcards.scenario_name}},
+            input.diff_config,
+        )
+        # merge the default config file with the difference
+        create_test_config(base_config_path, input.diff_config, "config.yaml")
+        os.system("snakemake -j all solve_all_networks --rerun-incomplete")
+        os.system("snakemake -j1 make_statistics --force")
+        copyfile("config.yaml", output.copyconfig)
+
+
+
+rule run_all_scenarios:
+    input:
+        expand(
+            "results/{scenario_name}/scenario.done",
+            scenario_name=[
+                c.stem.replace("config.", "")
+                for c in Path("configs/scenarios").glob("config.*.yaml")
+            ],
+        ),

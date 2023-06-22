@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: : 2017-2020 The PyPSA-Eur Authors, 2021 PyPSA-Africa Authors
+# SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# -*- coding: utf-8 -*-
 """
 Plots energy and cost summaries for solved networks.
 Relevant Settings
@@ -20,7 +22,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from _helpers import configure_logging
 
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def rename_techs(label):
@@ -65,8 +67,7 @@ preferred_order = pd.Index(
 )
 
 
-def plot_costs(infn, fn=None):
-
+def plot_costs(infn, snmk, fn=None):
     # For now ignore the simpl header
     cost_df = pd.read_csv(infn, index_col=list(range(3)), header=[1, 2, 3])
 
@@ -77,10 +78,10 @@ def plot_costs(infn, fn=None):
 
     df = df.groupby(df.index.map(rename_techs)).sum()
 
-    to_drop = df.index[df.max(axis=1) < snakemake.config["plotting"]["costs_threshold"]]
+    to_drop = df.index[df.max(axis=1) < snmk.config["plotting"]["costs_threshold"]]
 
     if not to_drop.empty:
-        _logger.info(
+        logger.info(
             "Dropping elements from costs dataframe:\n"
             + df.loc[to_drop].to_string()
             + "\n"
@@ -89,7 +90,7 @@ def plot_costs(infn, fn=None):
     df = df.drop(to_drop)
 
     if not to_drop.empty:
-        _logger.info("Remaining elements in costs dataframe:\n" + df.to_string() + "\n")
+        logger.info("Remaining elements in costs dataframe:\n" + df.to_string() + "\n")
 
     new_index_costs = df.index.intersection(preferred_order).append(
         df.index.difference(preferred_order)
@@ -101,8 +102,8 @@ def plot_costs(infn, fn=None):
     fig_costs.set_size_inches((12, 8))
 
     if new_index_costs.empty:
-        _logger.error(
-            f"No costs data to plot for country {snakemake.wildcards.country}, no valid plot is generated"
+        logger.error(
+            f"No costs data to plot for country {snmk.wildcards.country}, no valid plot is generated"
         )
         # create empty file to avoid issues with snakemake
         with open(fn, "w") as fp:
@@ -113,7 +114,7 @@ def plot_costs(infn, fn=None):
         kind="bar",
         ax=ax,
         stacked=True,
-        color=[snakemake.config["plotting"]["tech_colors"][i] for i in new_index_costs],
+        color=[snmk.config["plotting"]["tech_colors"][i] for i in new_index_costs],
     )
 
     handles, labels = ax.get_legend_handles_labels()
@@ -121,7 +122,7 @@ def plot_costs(infn, fn=None):
     handles.reverse()
     labels.reverse()
 
-    ax.set_ylim([0, snakemake.config["plotting"]["costs_max"]])
+    ax.set_ylim([0, snmk.config["plotting"]["costs_max"]])
 
     ax.set_ylabel("System Cost [EUR billion per year]")
 
@@ -137,8 +138,7 @@ def plot_costs(infn, fn=None):
         fig_costs.savefig(fn, transparent=True)
 
 
-def plot_energy(infn, fn=None):
-
+def plot_energy(infn, snmk, fn=None):
     energy_df = pd.read_csv(infn, index_col=list(range(2)), header=[1, 2, 3])
 
     df = energy_df.groupby(energy_df.index.get_level_values(1)).sum()
@@ -149,11 +149,11 @@ def plot_energy(infn, fn=None):
     df = df.groupby(df.index.map(rename_techs)).sum()
 
     to_drop = df.index[
-        df.abs().max(axis=1) < snakemake.config["plotting"]["energy_threshold"]
+        df.abs().max(axis=1) < snmk.config["plotting"]["energy_threshold"]
     ]
 
     if not to_drop.empty:
-        _logger.info(
+        logger.info(
             "Dropping elements from energy dataframe:\n"
             + df.loc[to_drop].to_string()
             + "\n"
@@ -162,9 +162,7 @@ def plot_energy(infn, fn=None):
     df = df.drop(to_drop)
 
     if not to_drop.empty:
-        _logger.info(
-            "Remaining elements in energy dataframe:\n" + df.to_string() + "\n"
-        )
+        logger.info("Remaining elements in energy dataframe:\n" + df.to_string() + "\n")
 
     new_index_energy = df.index.intersection(preferred_order).append(
         df.index.difference(preferred_order)
@@ -176,8 +174,8 @@ def plot_energy(infn, fn=None):
     fig_energy.set_size_inches((12, 8))
 
     if new_index_energy.empty:
-        _logger.error(
-            f"No energy data to plot for country {snakemake.wildcards.country}, no valid plot is generated"
+        logger.error(
+            f"No energy data to plot for country {snmk.wildcards.country}, no valid plot is generated"
         )
         # create empty file to avoid issues with snakemake
         with open(fn, "w") as fp:
@@ -188,9 +186,7 @@ def plot_energy(infn, fn=None):
         kind="bar",
         ax=ax,
         stacked=True,
-        color=[
-            snakemake.config["plotting"]["tech_colors"][i] for i in new_index_energy
-        ],
+        color=[snmk.config["plotting"]["tech_colors"][i] for i in new_index_energy],
     )
 
     handles, labels = ax.get_legend_handles_labels()
@@ -200,8 +196,8 @@ def plot_energy(infn, fn=None):
 
     ax.set_ylim(
         [
-            snakemake.config["plotting"]["energy_min"],
-            snakemake.config["plotting"]["energy_max"],
+            snmk.config["plotting"]["energy_min"],
+            snmk.config["plotting"]["energy_max"],
         ]
     )
 
@@ -242,6 +238,10 @@ if __name__ == "__main__":
     try:
         func = globals()[f"plot_{summary}"]
     except KeyError:
-        _logger.error(f"plotting function for {summary} has not been defined")
+        logger.error(f"plotting function for {summary} has not been defined")
 
-    func(os.path.join(snakemake.input[0], f"{summary}.csv"), snakemake.output[0])
+    func(
+        os.path.join(snakemake.input[0], f"{summary}.csv"),
+        snakemake,
+        snakemake.output[0],
+    )
